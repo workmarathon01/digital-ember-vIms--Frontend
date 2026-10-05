@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+@theme {
+  --color-primary: #0349a6;
+  --color-primary-light: #0b52bf;
+  --color-navy: #0a192f;
+  --color-navy-deep: #061226;
+  --color-accent: #1b75bc;
+  --color-accent-strong: #1665c1;
+  --color-canvas: #f8fafc;
+  --color-canvas-2: #f1f5f9;
+  --color-card: #ffffff;
+  --color-line: #e2e8f0;
+  --color-line-soft: #f1f5f9;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  --color-slate-muted: #94a3b8;
+  --color-hover-nav: #1e293b;
+  --color-success-bg: #e6f4ea;
+  --color-success: #1e8e3e;
+  --color-info-bg: #e8f0fe;
+  --color-info: #1a73e8;
+  --color-warn-bg: #fef7e0;
+  --color-warn: #b06000;
+  --font-sans: var(--font-inter);
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+}
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.7);
+}
