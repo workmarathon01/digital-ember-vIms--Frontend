@@ -12,7 +12,7 @@ import type {
 } from "./types";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+  process.env.NEXT_PUBLIC_API_URL ?? "https://api.amplify-automation.com";
 
 const ACCESS_KEY = "visitrack.access_token";
 const REFRESH_KEY = "visitrack.refresh_token";
