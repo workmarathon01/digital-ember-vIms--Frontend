@@ -2,11 +2,13 @@
 
 import {
   BarChart3,
+  Building2,
   ClipboardList,
   LayoutDashboard,
   LogOut,
   MonitorSmartphone,
   Settings,
+  Sparkles,
   UserCog,
   Users,
 } from "lucide-react";
@@ -15,13 +17,47 @@ import { usePathname, useRouter } from "next/navigation";
 import { LogoMark } from "./brand-logo";
 import { useAuth } from "@/lib/auth-context";
 
-const navItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  featureKey?: string;
+};
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/visitors", label: "Pre-registration", icon: ClipboardList },
-  { href: "/staffs", label: "Staff Directory", icon: Users },
-  { href: "/users", label: "Users & Roles", icon: UserCog },
-  { href: "/kiosk", label: "Kiosk Check-in", icon: MonitorSmartphone },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
+  {
+    href: "/properties",
+    label: "Sites & Properties",
+    icon: Building2,
+    featureKey: "property_management",
+  },
+  {
+    href: "/visitors",
+    label: "Pre-registration",
+    icon: ClipboardList,
+    featureKey: "visitor_management",
+  },
+  {
+    href: "/staffs",
+    label: "Staff Directory",
+    icon: Users,
+    featureKey: "staff_management",
+  },
+  {
+    href: "/users",
+    label: "Users & Roles",
+    icon: UserCog,
+    featureKey: "user_management",
+  },
+  {
+    href: "/kiosk",
+    label: "Kiosk Check-in",
+    icon: MonitorSmartphone,
+    featureKey: "kiosk_mode",
+  },
+  { href: "/reports", label: "Reports", icon: BarChart3, featureKey: "reports" },
+  { href: "/features", label: "Feature Access", icon: Sparkles },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -29,6 +65,12 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
+  const enabledFeatures = user?.feature_keys;
+  const visibleNavItems = enabledFeatures
+    ? navItems.filter(
+        (item) => !item.featureKey || enabledFeatures.includes(item.featureKey),
+      )
+    : navItems;
 
   return (
     <aside className="fixed left-0 top-0 z-50 flex h-screen w-64 flex-col justify-between bg-navy text-white">
@@ -41,7 +83,7 @@ export function Sidebar() {
           Main Menu
         </div>
         <div className="space-y-1">
-          {navItems.map(({ href, label, icon: Icon }) => {
+          {visibleNavItems.map(({ href, label, icon: Icon }) => {
             const active = pathname === href || pathname.startsWith(`${href}/`);
             return (
               <Link

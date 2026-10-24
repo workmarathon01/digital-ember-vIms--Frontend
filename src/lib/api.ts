@@ -1,18 +1,33 @@
 import type {
   ApiErrorBody,
+  Building,
+  BuildingListResponse,
   DashboardMetrics,
+  Feature,
+  FeatureListResponse,
+  FeatureOverrideState,
+  Floor,
+  FloorListResponse,
   RoleListResponse,
+  Site,
+  SiteFeatureAccess,
+  SiteListResponse,
   Staff,
   StaffListResponse,
   TokenResponse,
+  Unit,
+  UnitListResponse,
   User,
+  UserFeatureAccess,
   UserListResponse,
+  UserSite,
+  UserSiteListResponse,
   Visitor,
   VisitorListResponse,
 } from "./types";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL ?? "https://api.amplify-automation.com";
+ process.env.NEXT_PUBLIC_API_URL ?? "https://api.amplify-automation.com";
 
 const ACCESS_KEY = "visitrack.access_token";
 const REFRESH_KEY = "visitrack.refresh_token";
@@ -202,6 +217,165 @@ export async function createUser(
 
 export async function fetchRoles(): Promise<RoleListResponse> {
   return request<RoleListResponse>("/roles.json");
+}
+
+export async function fetchSites(): Promise<SiteListResponse> {
+  return request<SiteListResponse>("/sites.json");
+}
+
+export async function createSite(params: Record<string, unknown>): Promise<Site> {
+  return request<Site>("/sites.json", {
+    method: "POST",
+    body: { site: params },
+  });
+}
+
+export async function updateSite(
+  id: number,
+  params: Record<string, unknown>,
+): Promise<Site> {
+  return request<Site>(`/sites/${id}.json`, {
+    method: "PATCH",
+    body: { site: params },
+  });
+}
+
+export async function deleteSite(id: number): Promise<void> {
+  await request(`/sites/${id}.json`, { method: "DELETE" });
+}
+
+export async function fetchBuildings(): Promise<BuildingListResponse> {
+  return request<BuildingListResponse>("/buildings.json");
+}
+
+export async function createBuilding(
+  params: Record<string, unknown>,
+): Promise<Building> {
+  return request<Building>("/buildings.json", {
+    method: "POST",
+    body: { building: params },
+  });
+}
+
+export async function deleteBuilding(id: number): Promise<void> {
+  await request(`/buildings/${id}.json`, { method: "DELETE" });
+}
+
+export async function fetchFloors(): Promise<FloorListResponse> {
+  return request<FloorListResponse>("/floors.json");
+}
+
+export async function createFloor(
+  params: Record<string, unknown>,
+): Promise<Floor> {
+  return request<Floor>("/floors.json", {
+    method: "POST",
+    body: { floor: params },
+  });
+}
+
+export async function deleteFloor(id: number): Promise<void> {
+  await request(`/floors/${id}.json`, { method: "DELETE" });
+}
+
+export async function fetchUnits(): Promise<UnitListResponse> {
+  return request<UnitListResponse>("/units.json");
+}
+
+export async function createUnit(params: Record<string, unknown>): Promise<Unit> {
+  return request<Unit>("/units.json", {
+    method: "POST",
+    body: { unit: params },
+  });
+}
+
+export async function deleteUnit(id: number): Promise<void> {
+  await request(`/units/${id}.json`, { method: "DELETE" });
+}
+
+export async function fetchUserSites(): Promise<UserSiteListResponse> {
+  return request<UserSiteListResponse>("/user_sites.json");
+}
+
+export async function createUserSite(
+  params: Record<string, unknown>,
+): Promise<UserSite> {
+  return request<UserSite>("/user_sites.json", {
+    method: "POST",
+    body: { user_site: params },
+  });
+}
+
+export async function deleteUserSite(id: number): Promise<void> {
+  await request(`/user_sites/${id}.json`, { method: "DELETE" });
+}
+
+export async function makePrimaryUserSite(id: number): Promise<UserSite> {
+  return request<UserSite>(`/user_sites/${id}/make_primary.json`, {
+    method: "POST",
+  });
+}
+
+export async function fetchFeatures(): Promise<FeatureListResponse> {
+  return request<FeatureListResponse>("/features.json");
+}
+
+export async function createFeature(
+  params: Record<string, unknown>,
+): Promise<Feature> {
+  return request<Feature>("/features.json", {
+    method: "POST",
+    body: { feature: params },
+  });
+}
+
+export async function updateFeature(
+  id: number,
+  params: Record<string, unknown>,
+): Promise<Feature> {
+  return request<Feature>(`/features/${id}.json`, {
+    method: "PATCH",
+    body: { feature: params },
+  });
+}
+
+export async function deleteFeature(id: number): Promise<void> {
+  await request(`/features/${id}.json`, { method: "DELETE" });
+}
+
+export async function fetchSiteFeatures(
+  siteId: number,
+): Promise<SiteFeatureAccess> {
+  return request<SiteFeatureAccess>(`/sites/${siteId}/features.json`);
+}
+
+export async function updateSiteFeatures(
+  siteId: number,
+  featureIds: number[],
+): Promise<SiteFeatureAccess> {
+  return request<SiteFeatureAccess>(`/sites/${siteId}/features.json`, {
+    method: "PATCH",
+    body: { feature_ids: featureIds },
+  });
+}
+
+export async function fetchUserFeatures(
+  userId: number,
+  siteId?: number,
+): Promise<UserFeatureAccess> {
+  const query = siteId ? `?site_id=${siteId}` : "";
+  return request<UserFeatureAccess>(`/users/${userId}/features.json${query}`);
+}
+
+export async function updateUserFeatures(
+  userId: number,
+  siteId: number,
+  overrides: Record<number, FeatureOverrideState>,
+): Promise<UserFeatureAccess> {
+  return request<UserFeatureAccess>(`/users/${userId}/features.json`, {
+    method: "PATCH",
+    body: { site_id: siteId, overrides },
+  });
 }
 
 export { API_BASE_URL };

@@ -7,7 +7,9 @@ import {
   Building2,
   ClipboardList,
   Clock3,
+  DoorOpen,
   LogIn,
+  MapPin,
   RefreshCw,
   UserCheck,
   Users,
@@ -63,6 +65,8 @@ export default function DashboardPage() {
   const metricCards: Metric[] = metrics
     ? [
         { label: "Total Users", value: metrics.users_count, icon: Users },
+        { label: "Sites", value: metrics.sites_count, icon: MapPin },
+        { label: "Units", value: metrics.units_count, icon: DoorOpen },
         { label: "Active Visitors", value: metrics.visitors_count, icon: UserCheck },
         { label: "Checked-in Now", value: metrics.checked_in_visitors_count, icon: LogIn },
         { label: "Staff Members", value: metrics.staffs_count, icon: Building2 },
@@ -89,7 +93,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
+          <section className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-7">
             {metricCards.map(({ label, value, icon: Icon }) => (
               <Card key={label} className="flex items-center gap-4 px-5 py-4">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-line bg-canvas-2">

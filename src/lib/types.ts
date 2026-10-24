@@ -9,11 +9,163 @@ export interface User {
   role_id: number | null;
   company_id?: number | null;
   unit_id?: number | null;
+  building_id?: number | null;
+  floor_id?: number | null;
   current_site_id?: number | null;
+  site_name?: string | null;
+  building_name?: string | null;
+  floor_name?: string | null;
+  unit_name?: string | null;
+  residence_label?: string | null;
+  feature_keys?: string[];
+  effective_features?: Pick<Feature, "id" | "key" | "name" | "category">[];
   full_name: string;
   role_key?: string | null;
   role_label?: string | null;
   locked_out: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Site {
+  id: number;
+  name: string;
+  code: string;
+  region: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  postal_code: string | null;
+  timezone: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  active: boolean;
+  description: string | null;
+  display_name: string;
+  full_address: string;
+  buildings_count: number;
+  floors_count: number;
+  units_count: number;
+  residents_count: number;
+  features_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FeatureCategory =
+  | "general"
+  | "operations"
+  | "security"
+  | "resident"
+  | "reporting"
+  | "platform";
+
+export interface Feature {
+  id: number;
+  key: string;
+  name: string;
+  description: string | null;
+  category: FeatureCategory;
+  icon: string | null;
+  default_enabled: boolean;
+  active: boolean;
+  sort_order: number;
+  sites_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export type FeatureOverrideState = "inherit" | "granted" | "revoked";
+
+export interface SiteFeatureAccess {
+  site: Site;
+  features: (Feature & { enabled: boolean })[];
+  enabled_feature_ids: number[];
+  enabled_count: number;
+  available_count: number;
+}
+
+export interface UserFeatureAccess {
+  user: User;
+  site?: Site;
+  features: (Feature & { effective: boolean; override: FeatureOverrideState })[];
+  effective_feature_ids: number[];
+  effective_feature_keys: string[];
+}
+
+export interface Building {
+  id: number;
+  site_id: number;
+  name: string;
+  code: string | null;
+  description: string | null;
+  site_name: string | null;
+  location_label: string;
+  floors_count: number;
+  units_count: number;
+  residents_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Floor {
+  id: number;
+  site_id: number;
+  building_id: number;
+  name: string;
+  level: number | null;
+  description: string | null;
+  site_name: string | null;
+  building_name: string | null;
+  location_label: string;
+  units_count: number;
+  residents_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Unit {
+  id: number;
+  site_id: number;
+  building_id: number;
+  floor_id: number;
+  name: string;
+  unit_type: string | null;
+  carpet_area: string | null;
+  status: string;
+  description: string | null;
+  site_name: string | null;
+  building_name: string | null;
+  floor_name: string | null;
+  location_label: string;
+  full_address: string;
+  residents_count: number;
+  occupied: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UserSite {
+  id: number;
+  user_id: number;
+  site_id: number;
+  building_id: number | null;
+  floor_id: number | null;
+  unit_id: number | null;
+  ownership: string;
+  is_primary: boolean;
+  lives_here: boolean;
+  is_approved: boolean;
+  primary: boolean;
+  move_in_date: string | null;
+  move_out_date: string | null;
+  user_name: string | null;
+  site_name: string | null;
+  building_name: string | null;
+  floor_name: string | null;
+  unit_name: string | null;
+  location_label: string;
   created_at: string;
   updated_at: string;
 }
@@ -112,6 +264,8 @@ export interface AuditLog {
 
 export interface DashboardMetrics {
   users_count: number;
+  sites_count: number;
+  units_count: number;
   visitors_count: number;
   checked_in_visitors_count: number;
   staffs_count: number;
@@ -148,4 +302,34 @@ export interface UserListResponse {
 
 export interface RoleListResponse {
   data: Role[];
+}
+
+export interface SiteListResponse {
+  data: Site[];
+  meta: PaginationMeta;
+}
+
+export interface BuildingListResponse {
+  data: Building[];
+  meta: PaginationMeta;
+}
+
+export interface FloorListResponse {
+  data: Floor[];
+  meta: PaginationMeta;
+}
+
+export interface UnitListResponse {
+  data: Unit[];
+  meta: PaginationMeta;
+}
+
+export interface UserSiteListResponse {
+  data: UserSite[];
+  meta: PaginationMeta;
+}
+
+export interface FeatureListResponse {
+  data: Feature[];
+  meta: PaginationMeta;
 }

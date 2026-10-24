@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   Loader2,
   Mail,
+  MapPin,
   Phone,
   RefreshCw,
   ShieldCheck,
@@ -13,8 +14,8 @@ import {
 } from "lucide-react";
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
-import { createUser, fetchRoles, fetchUsers } from "@/lib/api";
-import type { Role, User } from "@/lib/types";
+import { createUser, fetchRoles, fetchSites, fetchUnits, fetchUsers } from "@/lib/api";
+import type { Role, Site, Unit, User } from "@/lib/types";
 
 const initialForm = {
   email: "",
@@ -24,6 +25,8 @@ const initialForm = {
   password: "",
   user_type: "Admin",
   role_id: "",
+  current_site_id: "",
+  unit_id: "",
 };
 
 type FormState = typeof initialForm;
@@ -32,6 +35,8 @@ export default function UsersPage() {
   const [form, setForm] = useState<FormState>(initialForm);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
@@ -43,9 +48,16 @@ export default function UsersPage() {
 
   async function load() {
     try {
-      const [userRes, roleRes] = await Promise.all([fetchUsers(), fetchRoles()]);
+      const [userRes, roleRes, siteRes, unitRes] = await Promise.all([
+        fetchUsers(),
+        fetchRoles(),
+        fetchSites(),
+        fetchUnits(),
+      ]);
       setUsers(userRes.data);
       setRoles(roleRes.data);
+      setSites(siteRes.data);
+      setUnits(unitRes.data);
     } finally {
       setLoading(false);
     }
@@ -64,6 +76,8 @@ export default function UsersPage() {
       const user = await createUser({
         ...form,
         role_id: form.role_id ? Number(form.role_id) : undefined,
+        current_site_id: form.current_site_id ? Number(form.current_site_id) : undefined,
+        unit_id: form.unit_id ? Number(form.unit_id) : undefined,
         active: true,
       });
       setNotice(`User account ${user.email} created successfully.`);
@@ -133,11 +147,11 @@ export default function UsersPage() {
               onChange={(e) => update("mobile", e.target.value)}
             />
           </Field>
-          <Field label="Password" hint="Minimum 8 characters.">
+          <Field label="Password" hint="Minimum 12 characters.">
             <TextInput
               type="password"
               required
-              minLength={8}
+              minLength={12}
               placeholder="••••••••"
               value={form.password}
               onChange={(e) => update("password", e.target.value)}
@@ -157,6 +171,29 @@ export default function UsersPage() {
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name} {r.is_system ? "(system)" : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Primary site">
+            <Select
+              value={form.current_site_id}
+              onChange={(e) => update("current_site_id", e.target.value)}
+            >
+              <option value="">No site</option>
+              {sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Primary unit" hint="Selecting a unit fills its site, building and floor.">
+            <Select value={form.unit_id} onChange={(e) => update("unit_id", e.target.value)}>
+              <option value="">No unit / site-only</option>
+              {units.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.location_label}
                 </option>
               ))}
             </Select>
@@ -194,6 +231,7 @@ export default function UsersPage() {
                 <th className="px-5 py-2.5">User</th>
                 <th className="px-5 py-2.5">Role</th>
                 <th className="px-5 py-2.5">Type</th>
+                <th className="px-5 py-2.5">Residence</th>
                 <th className="px-5 py-2.5">Contact</th>
                 <th className="px-5 py-2.5">Status</th>
               </tr>
@@ -201,13 +239,13 @@ export default function UsersPage() {
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center">
+                  <td colSpan={6} className="px-5 py-8 text-center">
                     <RefreshCw className="mx-auto h-5 w-5 animate-spin text-muted" />
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
                     No user accounts yet.
                   </td>
                 </tr>
@@ -234,6 +272,15 @@ export default function UsersPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-muted">{u.user_type ?? "—"}</td>
+                    <td className="px-5 py-3">
+                      {u.residence_label ? (
+                        <span className="flex items-center gap-1 text-muted">
+                          <MapPin className="h-3 w-3" /> {u.residence_label}
+                        </span>
+                      ) : (
+                        <span className="text-muted">—</span>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       {u.mobile ? (
                         <span className="flex items-center gap-1 text-muted">
