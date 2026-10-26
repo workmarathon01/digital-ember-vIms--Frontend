@@ -29,13 +29,11 @@ interface AuthSnapshot {
 const EMPTY_SNAPSHOT: AuthSnapshot = { user: null, hydrated: false };
 
 let currentSnapshot: AuthSnapshot = EMPTY_SNAPSHOT;
-let snapshotUserId: number | null | undefined = undefined;
 const listeners = new Set<() => void>();
 
 function getSnapshot(): AuthSnapshot {
   if (currentSnapshot === EMPTY_SNAPSHOT && typeof window !== "undefined") {
     const user = getStoredUser();
-    snapshotUserId = user?.id ?? null;
     currentSnapshot = { user, hydrated: true };
   }
   return currentSnapshot;
@@ -48,10 +46,9 @@ function getServerSnapshot(): AuthSnapshot {
 function refresh(): void {
   if (typeof window === "undefined") return;
   const user = getStoredUser();
-  const id = user?.id ?? null;
-  if (snapshotUserId !== id) {
-    snapshotUserId = id;
-    currentSnapshot = { user, hydrated: true };
+  const changed = JSON.stringify(currentSnapshot.user) !== JSON.stringify(user);
+  currentSnapshot = { user, hydrated: true };
+  if (changed) {
     for (const listener of listeners) listener();
   }
 }

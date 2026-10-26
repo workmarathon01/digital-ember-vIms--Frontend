@@ -17,6 +17,7 @@ import {
   createFeature,
   deleteFeature,
   fetchFeatures,
+  fetchFeatureTemplates,
   fetchSiteFeatures,
   fetchSites,
   fetchUserFeatures,
@@ -28,6 +29,7 @@ import type {
   Feature,
   FeatureCategory,
   FeatureOverrideState,
+  FeatureTemplate,
   Site,
   SiteFeatureAccess,
   User,
@@ -45,6 +47,7 @@ const categories: FeatureCategory[] = [
 
 const emptyCatalogForm = {
   name: "",
+  key: "",
   category: "operations" as FeatureCategory,
   description: "",
 };
@@ -102,10 +105,12 @@ function Metric({
 
 export default function FeaturesPage() {
   const [features, setFeatures] = useState<Feature[]>([]);
+  const [templates, setTemplates] = useState<FeatureTemplate[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
   const [users, setUsers] = useState<User[]>([]);
 
   const [catalogForm, setCatalogForm] = useState(emptyCatalogForm);
+  const [catalogTemplateKey, setCatalogTemplateKey] = useState("");
   const [siteId, setSiteId] = useState("");
   const [siteAccess, setSiteAccess] = useState<SiteFeatureAccess | null>(null);
   const [siteFeatureIds, setSiteFeatureIds] = useState<number[]>([]);
@@ -141,12 +146,14 @@ export default function FeaturesPage() {
 
   async function loadBase() {
     try {
-      const [featureRes, siteRes, userRes] = await Promise.all([
+      const [featureRes, templateRes, siteRes, userRes] = await Promise.all([
         fetchFeatures(),
+        fetchFeatureTemplates(),
         fetchSites(),
         fetchUsers(),
       ]);
       setFeatures(featureRes.data);
+      setTemplates(templateRes);
       setSites(siteRes.data);
       setUsers(userRes.data);
 
@@ -243,6 +250,9 @@ export default function FeaturesPage() {
   }
 
   const activeFeatures = features.filter((feature) => feature.active).length;
+  const availableTemplates = templates.filter(
+    (template) => !features.some((feature) => feature.key === template.key),
+  );
   const overriddenFeatures = userAccess
     ? userAccess.features.filter((feature) => feature.override !== "inherit").length
     : 0;
@@ -305,10 +315,12 @@ export default function FeaturesPage() {
                   async () => {
                     await createFeature({
                       name: catalogForm.name,
+                      key: catalogForm.key || undefined,
                       category: catalogForm.category,
                       description: catalogForm.description || undefined,
                     });
                     setCatalogForm(emptyCatalogForm);
+                    setCatalogTemplateKey("");
                     const refreshed = await fetchFeatures();
                     setFeatures(refreshed.data);
                   },
@@ -316,6 +328,43 @@ export default function FeaturesPage() {
                 );
               }}
             >
+              <div className="md:col-span-2">
+                <Field
+                  label="Standard feature"
+                  hint="Pick a standard capability to use its stable key, name and category. Use Custom feature for anything else."
+                >
+                  <Select
+                    value={catalogTemplateKey}
+                    disabled={availableTemplates.length === 0}
+                    onChange={(e) => {
+                      const key = e.target.value;
+                      setCatalogTemplateKey(key);
+                      const template = templates.find((item) => item.key === key);
+                      if (template) {
+                        setCatalogForm({
+                          name: template.name,
+                          key: template.key,
+                          category: template.category,
+                          description: template.description,
+                        });
+                      } else {
+                        setCatalogForm({ ...catalogForm, key: "" });
+                      }
+                    }}
+                  >
+                    <option value="">
+                      {availableTemplates.length === 0
+                        ? "All standard features are already in the catalog"
+                        : "Custom feature"}
+                    </option>
+                    {availableTemplates.map((template) => (
+                      <option key={template.key} value={template.key}>
+                        {template.name} ({template.key})
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
               <Field label="Feature name" required>
                 <TextInput
                   required
@@ -378,7 +427,8 @@ export default function FeaturesPage() {
                   {features.length === 0 ? (
                     <tr>
                       <td colSpan={4} className="px-3 py-6 text-center text-sm text-muted">
-                        No features in the catalog yet.
+                        No features in the catalog yet. Add a standard feature above
+                        or run <code className="font-mono">bin/rails db:seed</code>.
                       </td>
                     </tr>
                   ) : (
@@ -459,6 +509,9 @@ export default function FeaturesPage() {
                         />
                         <span>
                           <span className="block font-medium text-ink">{feature.name}</span>
+                          <span className="block font-mono text-[10px] text-muted">
+                            {feature.key}
+                          </span>
                           <span className="block text-[11px] text-muted">
                             {feature.category}
                           </span>

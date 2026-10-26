@@ -6,6 +6,7 @@ import type {
   Feature,
   FeatureListResponse,
   FeatureOverrideState,
+  FeatureTemplate,
   Floor,
   FloorListResponse,
   RoleListResponse,
@@ -25,6 +26,7 @@ import type {
   Visitor,
   VisitorListResponse,
 } from "./types";
+import { buildVisitorFormData } from "./visitor-form";
 
 const API_BASE_URL =
  process.env.NEXT_PUBLIC_API_URL ?? "https://api.amplify-automation.com";
@@ -86,6 +88,7 @@ export class ApiError extends Error {
 type RequestOptions = {
   method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
+  formData?: FormData;
   auth?: boolean;
   retry?: boolean;
 };
@@ -114,10 +117,16 @@ async function refreshAccessToken(): Promise<boolean> {
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = "GET", body, auth = true, retry = true } = options;
+  const {
+    method = "GET",
+    body,
+    formData,
+    auth = true,
+    retry = true,
+  } = options;
 
   const headers: Record<string, string> = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
+  if (body !== undefined && !formData) headers["Content-Type"] = "application/json";
   if (auth) {
     const token = getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -126,7 +135,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const res = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: formData ?? (body !== undefined ? JSON.stringify(body) : undefined),
   });
 
   if (res.status === 401 && auth && retry) {
@@ -182,7 +191,15 @@ export async function fetchVisitors(): Promise<VisitorListResponse> {
 
 export async function createVisitor(
   params: Record<string, unknown>,
+  profileImage?: File | null,
 ): Promise<Visitor> {
+  if (profileImage) {
+    return request<Visitor>("/visitors.json", {
+      method: "POST",
+      formData: buildVisitorFormData(params, profileImage),
+    });
+  }
+
   return request<Visitor>("/visitors.json", {
     method: "POST",
     body: { visitor: params },
@@ -318,6 +335,10 @@ export async function makePrimaryUserSite(id: number): Promise<UserSite> {
 
 export async function fetchFeatures(): Promise<FeatureListResponse> {
   return request<FeatureListResponse>("/features.json");
+}
+
+export async function fetchFeatureTemplates(): Promise<FeatureTemplate[]> {
+  return request<FeatureTemplate[]>("/features/templates.json");
 }
 
 export async function createFeature(

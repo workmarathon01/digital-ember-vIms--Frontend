@@ -1,22 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
   CalendarDays,
   Car,
   ClipboardList,
+  Download,
   Loader2,
   MapPin,
   Phone,
+  QrCode,
   RefreshCw,
   User as UserIcon,
+  X,
 } from "lucide-react";
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
+import { ProfileImageInput } from "@/components/profile-image-input";
 import { StatusBadge } from "@/components/status-badge";
 import { createVisitor, fetchVisitors } from "@/lib/api";
-import type { Visitor } from "@/lib/types";
+import { fetchHosts, fetchPublicFormOptions } from "@/lib/public-api";
+import type { PublicFormOptions, PublicHost, Visitor } from "@/lib/types";
 
 const initialForm = {
   name: "",
@@ -28,6 +33,9 @@ const initialForm = {
   expected_time: "",
   vehicle_number: "",
   expected_duration: "30",
+  site_id: "",
+  unit_id: "",
+  vhost_id: "",
 };
 
 type FormState = typeof initialForm;
@@ -47,10 +55,65 @@ export default function VisitorsPage() {
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [qrVisitor, setQrVisitor] = useState<Visitor | null>(null);
+  const [qrImage, setQrImage] = useState<string | null>(null);
+  const [options, setOptions] = useState<PublicFormOptions>({
+    sites: [],
+    units: [],
+  });
+  const [optionsLoading, setOptionsLoading] = useState(true);
+  const [hosts, setHosts] = useState<PublicHost[]>([]);
+  const [hostsLoading, setHostsLoading] = useState(false);
+  const [profileImage, setProfileImage] = useState<File | null>(null);
+  const [profilePreview, setProfilePreview] = useState<string | null>(null);
+  const hostsRequest = useRef(0);
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
+
+  function openQr(visitor: Visitor) {
+    setQrImage(null);
+    setQrVisitor(visitor);
+  }
+
+  function closeQr() {
+    setQrVisitor(null);
+    setQrImage(null);
+  }
+
+  useEffect(() => {
+    if (!qrVisitor) return;
+
+    const token = qrVisitor.qr_token || qrVisitor.pass_code;
+    if (!token) return;
+
+    const base = typeof window === "undefined" ? "" : window.location.origin;
+    const payload = base
+      ? `${base}/scan?t=${encodeURIComponent(token)}`
+      : token;
+    let cancelled = false;
+
+    void import("qrcode")
+      .then(({ default: QRCode }) =>
+        QRCode.toDataURL(payload, {
+          width: 720,
+          margin: 1,
+          errorCorrectionLevel: "M",
+          color: { dark: "#0a192f", light: "#ffffff" },
+        }),
+      )
+      .then((url) => {
+        if (!cancelled) setQrImage(url);
+      })
+      .catch(() => {
+        if (!cancelled) setQrImage(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [qrVisitor]);
 
   async function load() {
     try {
@@ -61,9 +124,90 @@ export default function VisitorsPage() {
     }
   }
 
+  async function loadHosts(unitId: string) {
+    const requestId = ++hostsRequest.current;
+
+    if (!unitId) {
+      setHosts([]);
+      setHostsLoading(false);
+      return;
+    }
+
+    setHostsLoading(true);
+    try {
+      const data = await fetchHosts(Number(unitId));
+      if (requestId === hostsRequest.current) setHosts(data.hosts ?? []);
+    } catch {
+      if (requestId === hostsRequest.current) setHosts([]);
+    } finally {
+      if (requestId === hostsRequest.current) setHostsLoading(false);
+    }
+  }
+
   useEffect(() => {
-    void load();
+    let cancelled = false;
+
+    void fetchVisitors()
+      .then((res) => {
+        if (!cancelled) setVisitors(res.visitors);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    void fetchPublicFormOptions()
+      .then((data) => {
+        if (!cancelled) setOptions(data);
+      })
+      .catch(() => {
+        if (!cancelled) setOptions({ sites: [], units: [] });
+      })
+      .finally(() => {
+        if (!cancelled) setOptionsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  const unitsForSite = options.units.filter(
+    (unit) => String(unit.site_id) === form.site_id,
+  );
+  const selectedHostMissing =
+    Boolean(form.vhost_id) &&
+    !hosts.some((host) => String(host.id) === form.vhost_id);
+
+  function selectSite(siteId: string) {
+    const keepUnit = Boolean(
+      form.unit_id &&
+        options.units.some(
+          (unit) =>
+            String(unit.id) === form.unit_id &&
+            String(unit.site_id) === siteId,
+        ),
+    );
+
+    setForm((current) => ({
+      ...current,
+      site_id: siteId,
+      unit_id: keepUnit ? current.unit_id : "",
+      vhost_id: keepUnit ? current.vhost_id : "",
+    }));
+
+    if (!keepUnit) void loadHosts("");
+  }
+
+  function selectUnit(unitId: string) {
+    const unit = options.units.find((item) => String(item.id) === unitId);
+    setForm((current) => ({
+      ...current,
+      unit_id: unitId,
+      site_id: unit ? String(unit.site_id) : current.site_id,
+      vhost_id: "",
+    }));
+    void loadHosts(unitId);
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,11 +215,23 @@ export default function VisitorsPage() {
     setNotice(null);
     setSubmitting(true);
     try {
-      const visitor = await createVisitor({ ...form });
+      const visitor = await createVisitor(
+        {
+          ...form,
+          site_id: form.site_id ? Number(form.site_id) : undefined,
+          unit_id: form.unit_id ? Number(form.unit_id) : undefined,
+          vhost_id: form.vhost_id ? Number(form.vhost_id) : undefined,
+        },
+        profileImage,
+      );
       setNotice(
-        `Visitor pass ${visitor.pass_code ?? "issued"} successfully. Share the pass code with the visitor.`,
+        `Visitor pass ${visitor.pass_code ?? "issued"} successfully. The QR pass is ready to share.`,
       );
       setForm(initialForm);
+      setProfileImage(null);
+      setProfilePreview(null);
+      void loadHosts("");
+      openQr(visitor);
       await load();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
@@ -125,6 +281,21 @@ export default function VisitorsPage() {
               onChange={(e) => update("contact_no", e.target.value)}
             />
           </Field>
+          <div className="md:col-span-2">
+            <Field
+              label="Profile Photo"
+              hint="Use the phone camera or choose a photo. The image is resized automatically."
+            >
+              <ProfileImageInput
+                file={profileImage}
+                preview={profilePreview}
+                onChange={(file, preview) => {
+                  setProfileImage(file);
+                  setProfilePreview(preview);
+                }}
+              />
+            </Field>
+          </div>
           <Field label="Purpose of Visit" required>
             <Select
               required
@@ -148,6 +319,80 @@ export default function VisitorsPage() {
               <option>One Time</option>
               <option>Recurring</option>
               <option>Vendor</option>
+            </Select>
+          </Field>
+          <Field label="Site">
+            <Select
+              value={form.site_id}
+              onChange={(e) => selectSite(e.target.value)}
+              disabled={optionsLoading}
+            >
+              <option value="">Select a site</option>
+              {options.sites.map((site) => (
+                <option key={site.id} value={site.id}>
+                  {site.display_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Visiting Unit"
+            hint={
+              form.site_id
+                ? "Select the unit the visitor is going to."
+                : "Select a site first."
+            }
+          >
+            <Select
+              value={form.unit_id}
+              onChange={(e) => selectUnit(e.target.value)}
+              disabled={
+                optionsLoading || !form.site_id || unitsForSite.length === 0
+              }
+            >
+              <option value="">Select a unit (optional)</option>
+              {unitsForSite.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.location_label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field
+            label="Host / Resident"
+            hint={
+              form.unit_id
+                ? "Optional — the person the visitor is meeting."
+                : "Select a unit to see its hosts."
+            }
+          >
+            <Select
+              value={form.vhost_id}
+              onChange={(e) => update("vhost_id", e.target.value)}
+              disabled={
+                !form.unit_id ||
+                hostsLoading ||
+                (hosts.length === 0 && !selectedHostMissing)
+              }
+            >
+              <option value="">
+                {!form.unit_id
+                  ? "Select a unit first"
+                  : hostsLoading
+                    ? "Loading hosts…"
+                    : hosts.length === 0
+                      ? "No hosts found for this unit"
+                      : "Select host (optional)"}
+              </option>
+              {selectedHostMissing ? (
+                <option value={form.vhost_id}>Current host</option>
+              ) : null}
+              {hosts.map((host) => (
+                <option key={host.id} value={host.id}>
+                  {host.full_name}
+                  {host.role_label ? ` — ${host.role_label}` : ""}
+                </option>
+              ))}
             </Select>
           </Field>
           <Field label="Coming From">
@@ -224,18 +469,19 @@ export default function VisitorsPage() {
                 <th className="px-5 py-2.5">Purpose</th>
                 <th className="px-5 py-2.5">Expected</th>
                 <th className="px-5 py-2.5">Status</th>
+                <th className="px-5 py-2.5 text-right">QR</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center">
+                  <td colSpan={6} className="px-5 py-8 text-center">
                     <RefreshCw className="mx-auto h-5 w-5 animate-spin text-muted" />
                   </td>
                 </tr>
               ) : visitors.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
                     No passes issued yet.
                   </td>
                 </tr>
@@ -244,14 +490,26 @@ export default function VisitorsPage() {
                   <tr key={v.id} className="border-b border-line-soft text-[13px] hover:bg-canvas">
                     <td className="py-3 pl-5 pr-4">
                       <div className="flex items-center gap-2.5">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info-bg text-info">
-                          <UserIcon className="h-3.5 w-3.5" />
-                        </span>
+                        {v.profile_image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={v.profile_image_url}
+                            alt={`Profile photo of ${v.name}`}
+                            className="h-8 w-8 rounded-full border border-line object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-info-bg text-info">
+                            <UserIcon className="h-3.5 w-3.5" />
+                          </span>
+                        )}
                         <div>
                           <p className="font-medium text-ink">{v.name}</p>
                           <p className="flex items-center gap-1 text-xs text-muted">
                             <Phone className="h-3 w-3" /> {v.contact_no ?? "—"}
                           </p>
+                          {v.host_name ? (
+                            <p className="text-xs text-muted">Host: {v.host_name}</p>
+                          ) : null}
                         </div>
                       </div>
                     </td>
@@ -283,6 +541,17 @@ export default function VisitorsPage() {
                         <StatusBadge tone="info">Expected</StatusBadge>
                       )}
                     </td>
+                    <td className="px-5 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openQr(v)}
+                        title="Show visitor QR pass"
+                        className="inline-flex items-center gap-1.5 rounded-md border border-line px-2.5 py-1.5 text-[11px] font-semibold text-accent-strong transition hover:bg-info-bg"
+                      >
+                        <QrCode className="h-3.5 w-3.5" />
+                        View
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -290,6 +559,105 @@ export default function VisitorsPage() {
           </table>
         </div>
       </Card>
+
+      {qrVisitor ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-navy/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`QR pass for ${qrVisitor.name}`}
+          onClick={closeQr}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-line bg-card p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3">
+                {qrVisitor.profile_image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={qrVisitor.profile_image_url}
+                    alt={`Profile photo of ${qrVisitor.name}`}
+                    className="h-11 w-11 rounded-full border border-line object-cover"
+                  />
+                ) : null}
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Visitor QR pass
+                  </p>
+                  <h3 className="mt-0.5 text-lg font-bold text-navy">
+                    {qrVisitor.name}
+                  </h3>
+                  <p className="text-xs font-medium text-accent-strong">
+                    {qrVisitor.pass_code ?? "—"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeQr}
+                aria-label="Close QR pass"
+                className="rounded-md p-1 text-muted transition hover:bg-canvas-2 hover:text-ink"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex flex-col items-center gap-3 rounded-lg border border-line bg-white p-4">
+              {qrImage ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={qrImage}
+                  alt={`QR pass for ${qrVisitor.name}`}
+                  className="h-56 w-56"
+                />
+              ) : (
+                <div className="flex h-56 w-56 items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted" />
+                </div>
+              )}
+              <p className="text-center text-[11px] text-muted">
+                Scan at the entrance to verify and check in.
+              </p>
+            </div>
+
+            <div className="mt-4 space-y-1.5 text-xs text-muted">
+              <p>
+                <span className="font-semibold text-ink">Valid until:</span>{" "}
+                {qrVisitor.end_pass
+                  ? new Date(qrVisitor.end_pass).toLocaleString([], {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })
+                  : "—"}
+              </p>
+              {qrVisitor.location_label ? (
+                <p className="flex items-start gap-1.5">
+                  <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                  {qrVisitor.location_label}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              {qrImage ? (
+                <a
+                  href={qrImage}
+                  download={`visitor-pass-${qrVisitor.pass_code ?? qrVisitor.id}.png`}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-line bg-card px-3 py-2.5 text-xs font-semibold text-ink transition hover:bg-canvas-2"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                </a>
+              ) : null}
+              <Button type="button" variant="navy" onClick={closeQr} className="flex-1">
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -65,7 +65,13 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
-  const enabledFeatures = user?.feature_keys;
+  // Fail open for older sessions and for a database with no feature catalog.
+  // When the catalog is configured, only gate navigation for users who have a
+  // resolved site-scoped feature list.
+  const enabledFeatures =
+    user?.features_configured === true && Array.isArray(user.feature_keys)
+      ? user.feature_keys
+      : null;
   const visibleNavItems = enabledFeatures
     ? navItems.filter(
         (item) => !item.featureKey || enabledFeatures.includes(item.featureKey),

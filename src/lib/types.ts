@@ -17,6 +17,7 @@ export interface User {
   floor_name?: string | null;
   unit_name?: string | null;
   residence_label?: string | null;
+  features_configured?: boolean;
   feature_keys?: string[];
   effective_features?: Pick<Feature, "id" | "key" | "name" | "category">[];
   full_name: string;
@@ -77,6 +78,16 @@ export interface Feature {
 }
 
 export type FeatureOverrideState = "inherit" | "granted" | "revoked";
+
+export interface FeatureTemplate {
+  key: string;
+  name: string;
+  description: string;
+  category: FeatureCategory;
+  icon: string | null;
+  default_enabled: boolean;
+  sort_order: number;
+}
 
 export interface SiteFeatureAccess {
   site: Site;
@@ -209,6 +220,14 @@ export interface Visitor {
   parking_slot: string | null;
   checked_in: boolean;
   pass_active: boolean;
+  qr_token?: string | null;
+  host_name?: string | null;
+  profile_image_url?: string | null;
+  location_label?: string | null;
+  site_name?: string | null;
+  building_name?: string | null;
+  floor_name?: string | null;
+  unit_name?: string | null;
   created_by_name: string | null;
   created_at: string;
   updated_at: string;
@@ -288,6 +307,110 @@ export interface PaginationMeta {
 export interface VisitorListResponse {
   visitors: Visitor[];
   meta: PaginationMeta;
+}
+
+/** Public fields exposed by the unauthenticated self-registration endpoints. */
+export interface PublicVisitor {
+  id: number;
+  name: string;
+  contact_no: string | null;
+  purpose: string | null;
+  pass_code: string | null;
+  pass_number: string | null;
+  visit_type: string | null;
+  visitor_in_out: string | null;
+  status: boolean | null;
+  verified: boolean | null;
+  coming_from: string | null;
+  vehicle_number: string | null;
+  site_id: number | null;
+  building_id: number | null;
+  floor_id: number | null;
+  unit_id: number | null;
+  vhost_id: number | null;
+  expected_date: string | null;
+  expected_time: string | null;
+  start_pass: string;
+  end_pass: string;
+  pass_start_date: string | null;
+  pass_end_date: string | null;
+  frequency: string | null;
+  working_days: string | null;
+  no_of_goods: number | null;
+  goods_inwards: boolean;
+  checked_in: boolean;
+  pass_active: boolean;
+  checked_in_at: string | null;
+  site_name: string | null;
+  building_name: string | null;
+  floor_name: string | null;
+  unit_name: string | null;
+  location_label: string;
+  host_name: string | null;
+  profile_image_url?: string | null;
+  qr_token?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PublicHost {
+  id: number;
+  full_name: string;
+  role_label: string | null;
+  position: string | null;
+}
+
+export interface PublicHostList {
+  hosts: PublicHost[];
+}
+
+export interface PublicVisitorLookup {
+  registered: boolean;
+  currently_checked_in: boolean;
+  visitor: PublicVisitor | null;
+}
+
+export interface PublicVisitorResponse {
+  message?: string;
+  visitor: PublicVisitor;
+}
+
+export interface PublicPassVerification {
+  found: boolean;
+  already_checked_in: boolean;
+  visitor: PublicVisitor;
+}
+
+export interface PublicCheckInResponse {
+  already_checked_in: boolean;
+  checked_in: boolean;
+  visitor: PublicVisitor;
+}
+
+export interface PublicSiteOption {
+  id: number;
+  name: string;
+  code: string;
+  city: string | null;
+  display_name: string;
+}
+
+export interface PublicUnitOption {
+  id: number;
+  name: string;
+  site_id: number;
+  building_id: number;
+  floor_id: number;
+  unit_type: string | null;
+  site_name: string | null;
+  building_name: string | null;
+  floor_name: string | null;
+  location_label: string;
+}
+
+export interface PublicFormOptions {
+  sites: PublicSiteOption[];
+  units: PublicUnitOption[];
 }
 
 export interface StaffListResponse {

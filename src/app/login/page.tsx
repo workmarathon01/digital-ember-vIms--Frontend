@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
 import { Button, Card, Field, TextInput } from "@/components/ui";
@@ -131,9 +132,18 @@ export default function LoginPage() {
                   <span className="h-px flex-1 bg-line" />
                 </div>
 
-                <Button type="button" variant="secondary" size="lg" className="w-full">
+                <Link
+                  href="/self-register"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-card px-6 py-3 text-sm font-semibold text-ink transition hover:bg-canvas-2 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
                   Pre-Register Visitor
-                </Button>
+                </Link>
+                <Link
+                  href="/scan"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg px-6 py-1 text-xs font-semibold text-accent-strong transition hover:underline"
+                >
+                  Scan a visitor pass →
+                </Link>
               </form>
             </Card>
           </div>
