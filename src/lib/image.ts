@@ -13,8 +13,8 @@ function loadImage(source: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Resize and re-encode a visitor photo before upload. This keeps mobile camera
- * photos small and gives every visitor record a consistent JPEG thumbnail.
+ * Resize and re-encode a profile photo before upload. This keeps mobile camera
+ * photos small and gives every record a consistent JPEG thumbnail.
  */
 export async function prepareProfileImage(
   file: File,
@@ -54,7 +54,7 @@ export async function prepareProfileImage(
     });
     if (!blob) throw new Error("This image could not be prepared.");
 
-    const baseName = file.name.replace(/\.[^.]+$/, "") || "visitor-photo";
+    const baseName = file.name.replace(/\.[^.]+$/, "") || "profile-photo";
 
     return {
       file: new File([blob], `${baseName}.jpg`, {

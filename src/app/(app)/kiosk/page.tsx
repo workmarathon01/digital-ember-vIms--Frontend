@@ -2,8 +2,13 @@
 
 import Link from "next/link";
 import { ArrowRight, MonitorSmartphone, QrCode, UserPlus } from "lucide-react";
+import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/permissions";
 
 export default function KioskPage() {
+  const { user } = useAuth();
+  const canCreateVisitor = can(user, "visitors", "create");
+
   return (
     <div className="flex min-h-[70vh] flex-col items-center justify-center text-center">
       <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.15em] text-ink">
@@ -58,12 +63,14 @@ export default function KioskPage() {
         </Link>
       </div>
 
-      <Link
-        href="/visitors"
-        className="mt-6 text-xs font-semibold text-accent-strong hover:underline"
-      >
-        Pre-register a visitor from the staff console →
-      </Link>
+      {canCreateVisitor ? (
+        <Link
+          href="/visitors"
+          className="mt-6 text-xs font-semibold text-accent-strong hover:underline"
+        >
+          Pre-register a visitor from the staff console →
+        </Link>
+      ) : null}
     </div>
   );
 }

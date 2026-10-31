@@ -2,6 +2,8 @@ import { ApiError, API_BASE_URL } from "./api";
 import type {
   ApiErrorBody,
   PublicCheckInResponse,
+  PublicEmployeeRegistrationOptions,
+  PublicEmployeeRegistrationResponse,
   PublicFormOptions,
   PublicHostList,
   PublicPassVerification,
@@ -93,5 +95,42 @@ export function fetchPublicFormOptions(): Promise<PublicFormOptions> {
 export function fetchHosts(unitId: number): Promise<PublicHostList> {
   return publicRequest<PublicHostList>(
     `/public/hosts.json?unit_id=${encodeURIComponent(unitId)}`,
+  );
+}
+
+function buildEmployeeRegistrationFormData(
+  params: Record<string, unknown>,
+  profileImage?: File | null,
+): FormData {
+  const formData = new FormData();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null || value === "") continue;
+    formData.append(`employee_registration[${key}]`, String(value));
+  }
+
+  if (profileImage) {
+    formData.append("employee_registration[profile_image]", profileImage);
+  }
+
+  return formData;
+}
+
+export function fetchEmployeeRegistrationOptions(): Promise<PublicEmployeeRegistrationOptions> {
+  return publicRequest<PublicEmployeeRegistrationOptions>(
+    "/public/employee_registrations/options.json",
+  );
+}
+
+export function registerEmployee(
+  params: Record<string, unknown>,
+  profileImage?: File | null,
+): Promise<PublicEmployeeRegistrationResponse> {
+  return publicRequest<PublicEmployeeRegistrationResponse>(
+    "/public/employee_registrations.json",
+    {
+      method: "POST",
+      formData: buildEmployeeRegistrationFormData(params, profileImage),
+    },
   );
 }

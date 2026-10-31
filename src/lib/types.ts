@@ -4,6 +4,8 @@ export interface User {
   firstname?: string | null;
   lastname?: string | null;
   mobile?: string | null;
+  position?: string | null;
+  date_of_joining?: string | null;
   active: boolean;
   user_type: string | null;
   role_id: number | null;
@@ -19,11 +21,19 @@ export interface User {
   residence_label?: string | null;
   features_configured?: boolean;
   feature_keys?: string[];
+  permissions?: string[];
   effective_features?: Pick<Feature, "id" | "key" | "name" | "category">[];
   full_name: string;
   role_key?: string | null;
   role_label?: string | null;
+  profile_image_url?: string | null;
   locked_out: boolean;
+  registration_status?: "pending" | "approved" | "rejected" | null;
+  registration_submitted_at?: string | null;
+  reviewed_at?: string | null;
+  reviewed_by_name?: string | null;
+  registration_note?: string | null;
+  pending_registration?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -411,6 +421,29 @@ export interface PublicUnitOption {
 export interface PublicFormOptions {
   sites: PublicSiteOption[];
   units: PublicUnitOption[];
+}
+
+export interface PublicEmployeeSiteOption {
+  id: number;
+  name: string;
+  code: string;
+  display_name: string;
+}
+
+export interface PublicEmployeeRegistrationOptions {
+  sites: PublicEmployeeSiteOption[];
+  minimum_password_length: number;
+}
+
+export interface PublicEmployeeRegistrationResponse {
+  message: string;
+  employee: {
+    id: number;
+    full_name: string;
+    email: string;
+    registration_status: "pending" | "approved" | "rejected";
+    submitted_at: string | null;
+  };
 }
 
 export interface StaffListResponse {

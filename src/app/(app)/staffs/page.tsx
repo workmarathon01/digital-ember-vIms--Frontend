@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
 import { StatusBadge } from "@/components/status-badge";
+import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/permissions";
 import { createStaff, fetchStaffs } from "@/lib/api";
 import type { Staff } from "@/lib/types";
 
@@ -30,6 +32,8 @@ const initialForm = {
 type FormState = typeof initialForm;
 
 export default function StaffsPage() {
+  const { user } = useAuth();
+  const canCreateStaff = can(user, "staffs", "create");
   const [form, setForm] = useState<FormState>(initialForm);
   const [staffs, setStaffs] = useState<Staff[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -91,10 +95,17 @@ export default function StaffsPage() {
         </div>
       ) : null}
 
-      <Card className="p-6">
-        <h2 className="mb-5 text-sm font-bold uppercase tracking-[0.08em] text-ink">
-          New Staff Member
-        </h2>
+      {error ? (
+        <p className="mb-5 rounded-lg border border-warn/30 bg-warn-bg px-4 py-3 text-[13px] font-medium text-warn">
+          {error}
+        </p>
+      ) : null}
+
+      {canCreateStaff ? (
+        <Card className="p-6">
+          <h2 className="mb-5 text-sm font-bold uppercase tracking-[0.08em] text-ink">
+            New Staff Member
+          </h2>
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <Field label="First Name" required>
             <TextInput
@@ -162,12 +173,6 @@ export default function StaffsPage() {
             />
           </Field>
 
-          {error ? (
-            <p className="rounded-lg border border-warn/30 bg-warn-bg px-3 py-2 text-[13px] font-medium text-warn md:col-span-2">
-              {error}
-            </p>
-          ) : null}
-
           <div className="md:col-span-2">
             <Button type="submit" size="lg" disabled={submitting}>
               {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
@@ -175,7 +180,8 @@ export default function StaffsPage() {
             </Button>
           </div>
         </form>
-      </Card>
+        </Card>
+      ) : null}
 
       <Card className="mt-6">
         <div className="border-b border-line">

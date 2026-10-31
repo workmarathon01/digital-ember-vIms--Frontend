@@ -8,7 +8,13 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { getAccessToken, getStoredUser, login as apiLogin, logout as apiLogout } from "./api";
+import {
+  getAccessToken,
+  getStoredUser,
+  login as apiLogin,
+  logout as apiLogout,
+  SESSION_EXPIRED_EVENT,
+} from "./api";
 import type { User } from "./types";
 
 interface AuthContextValue {
@@ -17,6 +23,7 @@ interface AuthContextValue {
   hydrated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -56,9 +63,11 @@ function refresh(): void {
 function subscribe(listener: () => void): () => void {
   listeners.add(listener);
   window.addEventListener("storage", refresh);
+  window.addEventListener(SESSION_EXPIRED_EVENT, refresh);
   return () => {
     listeners.delete(listener);
     window.removeEventListener("storage", refresh);
+    window.removeEventListener(SESSION_EXPIRED_EVENT, refresh);
   };
 }
 
@@ -86,6 +95,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hydrated,
       login,
       logout,
+      refreshUser: refresh,
     }),
     [user, hydrated, login, logout],
   );

@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, UserPlus } from "lucide-react";
 import { Button, Card, Field, TextInput } from "@/components/ui";
 import { FeatureGrid } from "@/components/feature-grid";
 import { KioskPanel } from "@/components/kiosk-panel";
 import { FooterBanner } from "@/components/footer-banner";
 import { LogoMark } from "@/components/brand-logo";
+import { consumeSessionExpiredNotice } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 
 export default function LoginPage() {
@@ -19,6 +20,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!consumeSessionExpiredNotice()) return;
+    // The notice is read once when the login screen mounts.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setError("Your session has expired. Please sign in again.");
+  }, []);
 
   const canSubmit = useMemo(
     () => email.trim().length > 0 && password.length > 0 && !submitting,
@@ -132,6 +140,13 @@ export default function LoginPage() {
                   <span className="h-px flex-1 bg-line" />
                 </div>
 
+                <Link
+                  href="/self-register/employee"
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-card px-6 py-3 text-sm font-semibold text-ink transition hover:bg-canvas-2 focus:outline-none focus:ring-2 focus:ring-primary/20"
+                >
+                  <UserPlus className="h-4 w-4" />
+                  Employee Self-Registration
+                </Link>
                 <Link
                   href="/self-register"
                   className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-line bg-card px-6 py-3 text-sm font-semibold text-ink transition hover:bg-canvas-2 focus:outline-none focus:ring-2 focus:ring-primary/20"

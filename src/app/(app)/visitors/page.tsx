@@ -19,6 +19,8 @@ import {
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
 import { ProfileImageInput } from "@/components/profile-image-input";
 import { StatusBadge } from "@/components/status-badge";
+import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/permissions";
 import { createVisitor, fetchVisitors } from "@/lib/api";
 import { fetchHosts, fetchPublicFormOptions } from "@/lib/public-api";
 import type { PublicFormOptions, PublicHost, Visitor } from "@/lib/types";
@@ -49,6 +51,8 @@ function formatExpectedTime(raw: string | null): string {
 }
 
 export default function VisitorsPage() {
+  const { user } = useAuth();
+  const canCreateVisitor = can(user, "visitors", "create");
   const [form, setForm] = useState<FormState>(initialForm);
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -260,10 +264,17 @@ export default function VisitorsPage() {
         </div>
       ) : null}
 
-      <Card className="p-6">
-        <h2 className="mb-5 flex items-center gap-2 text-sm font-bold uppercase tracking-[0.08em] text-ink">
-          New Visitor Pass
-        </h2>
+      {error ? (
+        <p className="mb-5 rounded-lg border border-warn/30 bg-warn-bg px-4 py-3 text-[13px] font-medium text-warn">
+          {error}
+        </p>
+      ) : null}
+
+      {canCreateVisitor ? (
+        <Card className="p-6">
+          <h2 className="mb-5 flex items-center gap-2 text-sm font-bold uppercase tracking-[0.08em] text-ink">
+            New Visitor Pass
+          </h2>
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <Field label="Full Name" required>
             <TextInput
@@ -435,12 +446,6 @@ export default function VisitorsPage() {
             />
           </Field>
 
-          {error ? (
-            <p className="rounded-lg border border-warn/30 bg-warn-bg px-3 py-2 text-[13px] font-medium text-warn md:col-span-2">
-              {error}
-            </p>
-          ) : null}
-
           <div className="md:col-span-2">
             <Button type="submit" size="lg" disabled={submitting}>
               {submitting ? (
@@ -452,7 +457,8 @@ export default function VisitorsPage() {
             </Button>
           </div>
         </form>
-      </Card>
+        </Card>
+      ) : null}
 
       <Card className="mt-6">
         <div className="border-b border-line">

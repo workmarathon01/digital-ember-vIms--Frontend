@@ -1,21 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/permissions";
 import {
   BadgeCheck,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Copy,
   Loader2,
   Mail,
   MapPin,
+  Pencil,
   Phone,
   RefreshCw,
   ShieldCheck,
   UserCog,
+  UserPlus,
   UserRound,
+  X,
+  XCircle,
 } from "lucide-react";
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
+import { ProfileImageInput } from "@/components/profile-image-input";
 import { StatusBadge } from "@/components/status-badge";
-import { createUser, fetchRoles, fetchSites, fetchUnits, fetchUsers } from "@/lib/api";
-import type { Role, Site, Unit, User } from "@/lib/types";
+import {
+  approveUserRegistration,
+  createUser,
+  fetchPendingRegistrations,
+  fetchRoles,
+  fetchSites,
+  fetchUnits,
+  fetchUsers,
+  rejectUserRegistration,
+  updateUser,
+} from "@/lib/api";
+import type { PaginationMeta, Role, Site, Unit, User } from "@/lib/types";
 
 const initialForm = {
   email: "",
@@ -23,7 +45,7 @@ const initialForm = {
   lastname: "",
   mobile: "",
   password: "",
-  user_type: "Admin",
+  user_type: "",
   role_id: "",
   current_site_id: "",
   unit_id: "",
@@ -31,41 +53,203 @@ const initialForm = {
 
 type FormState = typeof initialForm;
 
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleDateString([], { dateStyle: "medium" });
+}
+
 export default function UsersPage() {
+  const { user } = useAuth();
   const [form, setForm] = useState<FormState>(initialForm);
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [meta, setMeta] = useState<PaginationMeta | null>(null);
+  const [page, setPage] = useState(1);
+  const [editingUserId, setEditingUserId] = useState<number | null>(null);
+  const [profileImage, setProfileImage] = useState<File | null>(null);
+  const [profilePreview, setProfilePreview] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [pendingUsers, setPendingUsers] = useState<User[]>([]);
+  const [pendingLoading, setPendingLoading] = useState(true);
+  const [actingId, setActingId] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
+  const canCreateUsers = can(user, "users", "create");
+  const canUpdateUsers = can(user, "users", "update");
+  const canApproveUsers =
+    can(user, "users", "approve") || can(user, "users", "update");
+  const canManageUsers = canUpdateUsers;
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  async function load() {
+  async function load(pageNumber = page) {
+    setLoading(true);
     try {
-      const [userRes, roleRes, siteRes, unitRes] = await Promise.all([
-        fetchUsers(),
-        fetchRoles(),
-        fetchSites(),
-        fetchUnits(),
-      ]);
+      const userRes = await fetchUsers(pageNumber);
       setUsers(userRes.data);
-      setRoles(roleRes.data);
-      setSites(siteRes.data);
-      setUnits(unitRes.data);
+      setMeta(userRes.meta);
+      setPage(userRes.meta.page);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load users.");
     } finally {
       setLoading(false);
     }
   }
 
+  async function loadOptions() {
+    if (!canCreateUsers && !canUpdateUsers) return;
+
+    try {
+      const [roleRes, siteRes, unitRes] = await Promise.all([
+        fetchRoles(),
+        fetchSites(),
+        fetchUnits(),
+      ]);
+      setRoles(roleRes.data);
+      setSites(siteRes.data);
+      setUnits(unitRes.data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load form options.");
+    }
+  }
+
+  async function loadPending() {
+    setPendingLoading(true);
+    try {
+      const response = await fetchPendingRegistrations();
+      setPendingUsers(response.data);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not load pending employee registrations.",
+      );
+    } finally {
+      setPendingLoading(false);
+    }
+  }
+
+  async function reviewRegistration(
+    target: User,
+    action: "approve" | "reject",
+  ) {
+    setActingId(target.id);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const updated =
+        action === "approve"
+          ? await approveUserRegistration(target.id)
+          : await rejectUserRegistration(target.id);
+
+      setPendingUsers((current) =>
+        current.filter((item) => item.id !== target.id),
+      );
+      setUsers((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setNotice(
+        action === "approve"
+          ? `${updated.full_name}'s employee registration was approved. They can now sign in.`
+          : `${updated.full_name}'s employee registration was rejected.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Could not review this employee registration.",
+      );
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function copyRegistrationLink() {
+    const url = `${window.location.origin}/self-register/employee/`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+      setNotice("Employee registration link copied. Share it with your team.");
+    } catch {
+      setError("Could not copy the link. Copy it from the address bar instead.");
+    }
+  }
+
   useEffect(() => {
-    void load();
+    // Initial loading is async; state updates happen after the network round-trip.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load(1);
+    void loadOptions();
+    // The initial loader is intentionally run once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    // Only reviewers may read the pending queue; other users would get a 403.
+    if (!canApproveUsers) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadPending();
+  }, [canApproveUsers]);
+
+  function resetForm() {
+    setForm(initialForm);
+    setEditingUserId(null);
+    setProfileImage(null);
+    setProfilePreview(null);
+    setError(null);
+  }
+
+  function startEdit(selected: User) {
+    setEditingUserId(selected.id);
+    setForm({
+      email: selected.email ?? "",
+      firstname: selected.firstname ?? "",
+      lastname: selected.lastname ?? "",
+      mobile: selected.mobile ?? "",
+      password: "",
+      user_type: selected.user_type ?? "",
+      role_id: selected.role_id ? String(selected.role_id) : "",
+      current_site_id: selected.current_site_id ? String(selected.current_site_id) : "",
+      unit_id: selected.unit_id ? String(selected.unit_id) : "",
+    });
+    setProfileImage(null);
+    setProfilePreview(selected.profile_image_url ?? null);
+    setError(null);
+    setNotice(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function toggleActive(target: User) {
+    setError(null);
+    setNotice(null);
+    setTogglingId(target.id);
+    try {
+      const updated = await updateUser(target.id, { active: !target.active });
+      setUsers((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item)),
+      );
+      setNotice(
+        `${updated.full_name} is now ${updated.active ? "active" : "inactive"}.`,
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not update account status.",
+      );
+    } finally {
+      setTogglingId(null);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,19 +257,28 @@ export default function UsersPage() {
     setNotice(null);
     setSubmitting(true);
     try {
-      const user = await createUser({
+      const params = {
         ...form,
+        active: editingUserId ? undefined : true,
         role_id: form.role_id ? Number(form.role_id) : undefined,
         current_site_id: form.current_site_id ? Number(form.current_site_id) : undefined,
         unit_id: form.unit_id ? Number(form.unit_id) : undefined,
-        active: true,
-      });
-      setNotice(`User account ${user.email} created successfully.`);
-      setForm(initialForm);
-      await load();
+      };
+
+      if (editingUserId) {
+        const updated = await updateUser(editingUserId, params, profileImage);
+        setNotice(`User account ${updated.email} updated successfully.`);
+        resetForm();
+        await load(page);
+      } else {
+        const created = await createUser(params, profileImage);
+        setNotice(`User account ${created.email} created successfully.`);
+        resetForm();
+        await load(1);
+      }
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not create user account.");
+      setError(err instanceof Error ? err.message : "Could not save user account.");
     } finally {
       setSubmitting(false);
     }
@@ -110,9 +303,190 @@ export default function UsersPage() {
         </div>
       ) : null}
 
-      <Card className="p-6">
-        <h2 className="mb-5 text-sm font-bold uppercase tracking-[0.08em] text-ink">
-          Create User Account
+      {error ? (
+        <p className="mb-5 rounded-lg border border-warn/30 bg-warn-bg px-4 py-3 text-[13px] font-medium text-warn">
+          {error}
+        </p>
+      ) : null}
+
+      {canApproveUsers ? (
+        <Card className="mb-6 p-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-xl">
+              <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.08em] text-ink">
+                <UserPlus className="h-4 w-4 text-accent" />
+                Employee Self-Registration
+              </h2>
+              <p className="mt-1.5 text-[13px] text-muted">
+                Share this public link with employees. They can create their own
+                account, and a Super Admin or Admin must approve it before they
+                can sign in.
+              </p>
+              <code className="mt-3 inline-block rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-medium text-ink">
+                /self-register/employee/
+              </code>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void copyRegistrationLink()}
+              >
+                {copied ? (
+                  <Check className="h-3.5 w-3.5 text-success" />
+                ) : (
+                  <Copy className="h-3.5 w-3.5" />
+                )}
+                {copied ? "Copied" : "Copy link"}
+              </Button>
+              <a
+                href="/self-register/employee/"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-semibold text-ink transition hover:bg-canvas-2"
+              >
+                Preview
+              </a>
+            </div>
+          </div>
+
+          <div className="mt-5 border-t border-line pt-5">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-[13px] font-bold text-ink">
+                <Clock className="h-4 w-4 text-warn" />
+                Pending approvals
+                {pendingUsers.length > 0 ? (
+                  <span className="rounded-full bg-warn-bg px-2 py-0.5 text-[11px] font-semibold text-warn">
+                    {pendingUsers.length}
+                  </span>
+                ) : null}
+              </h3>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void loadPending()}
+                disabled={pendingLoading}
+              >
+                <RefreshCw
+                  className={`h-3.5 w-3.5 ${pendingLoading ? "animate-spin" : ""}`}
+                />
+                Refresh
+              </Button>
+            </div>
+
+            {pendingLoading ? (
+              <div className="flex items-center justify-center py-6 text-sm text-muted">
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                Loading registrations…
+              </div>
+            ) : pendingUsers.length === 0 ? (
+              <p className="rounded-lg border border-line-soft bg-canvas px-4 py-4 text-[13px] text-muted">
+                No employee registrations are waiting for approval.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-canvas text-[11px] font-semibold uppercase tracking-wider text-muted">
+                      <th className="px-4 py-2.5">Employee</th>
+                      <th className="px-4 py-2.5">Position</th>
+                      <th className="px-4 py-2.5">Work location</th>
+                      <th className="px-4 py-2.5">Submitted</th>
+                      <th className="px-4 py-2.5 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingUsers.map((pendingUser) => (
+                      <tr
+                        key={pendingUser.id}
+                        className="border-b border-line-soft text-[13px] last:border-b-0"
+                      >
+                        <td className="py-3 pl-4 pr-3">
+                          <div className="flex items-center gap-2.5">
+                            {pendingUser.profile_image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={pendingUser.profile_image_url}
+                                alt=""
+                                className="h-8 w-8 rounded-full border border-line object-cover"
+                              />
+                            ) : (
+                              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-info-bg text-info">
+                                <UserRound className="h-4 w-4" />
+                              </span>
+                            )}
+                            <div>
+                              <p className="font-medium text-ink">
+                                {pendingUser.full_name}
+                              </p>
+                              <p className="text-xs text-muted">
+                                {pendingUser.email}
+                                {pendingUser.mobile
+                                  ? ` · ${pendingUser.mobile}`
+                                  : ""}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-muted">
+                          {pendingUser.position ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-muted">
+                          {pendingUser.site_name ?? "—"}
+                        </td>
+                        <td className="px-4 py-3 text-muted">
+                          {formatDate(
+                            pendingUser.registration_submitted_at ??
+                              pendingUser.created_at,
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              disabled={actingId === pendingUser.id}
+                              onClick={() =>
+                                void reviewRegistration(pendingUser, "approve")
+                              }
+                            >
+                              {actingId === pendingUser.id ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
+                              Approve
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="danger"
+                              size="sm"
+                              disabled={actingId === pendingUser.id}
+                              onClick={() =>
+                                void reviewRegistration(pendingUser, "reject")
+                              }
+                            >
+                              <XCircle className="h-3.5 w-3.5" />
+                              Reject
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </Card>
+      ) : null}
+
+      {canCreateUsers || canUpdateUsers ? (
+        <Card className="p-6">
+          <h2 className="mb-5 text-sm font-bold uppercase tracking-[0.08em] text-ink">
+            {editingUserId ? "Edit User Account" : "Create User Account"}
         </h2>
         <form onSubmit={handleSubmit} className="grid gap-4 md:grid-cols-2">
           <Field label="First Name" required>
@@ -147,32 +521,72 @@ export default function UsersPage() {
               onChange={(e) => update("mobile", e.target.value)}
             />
           </Field>
-          <Field label="Password" hint="Minimum 12 characters.">
+          <Field
+            label="Password"
+            required={!editingUserId}
+            hint={
+              editingUserId
+                ? "Leave blank to keep the current password."
+                : "Minimum 12 characters."
+            }
+          >
             <TextInput
               type="password"
-              required
+              required={!editingUserId}
               minLength={12}
               placeholder="••••••••"
               value={form.password}
               onChange={(e) => update("password", e.target.value)}
             />
           </Field>
+          <div className="md:col-span-2">
+            <Field
+              label="Profile Photo"
+              hint="Upload a photo or take one with your camera."
+            >
+              <ProfileImageInput
+                file={profileImage}
+                preview={profilePreview}
+                onChange={(file, preview) => {
+                  setProfileImage(file);
+                  setProfilePreview(preview);
+                }}
+              />
+            </Field>
+          </div>
           <Field label="User Type">
-            <Select value={form.user_type} onChange={(e) => update("user_type", e.target.value)}>
-              <option>Admin</option>
-              <option>Security</option>
-              <option>Reception</option>
-              <option>Manager</option>
+            <Select
+              value={form.user_type}
+              onChange={(e) => update("user_type", e.target.value)}
+            >
+              <option value="">Select user type</option>
+              {form.user_type &&
+              !roles.some((role) => role.name === form.user_type) ? (
+                <option value={form.user_type}>{form.user_type}</option>
+              ) : null}
+              {roles
+                .filter(
+                  (role) => user?.role_key === "super_admin" || role.key !== "super_admin",
+                )
+                .map((role) => (
+                  <option key={role.id} value={role.name}>
+                    {role.name}
+                  </option>
+                ))}
             </Select>
           </Field>
           <Field label="Role">
             <Select value={form.role_id} onChange={(e) => update("role_id", e.target.value)}>
               <option value="">Select role</option>
-              {roles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name} {r.is_system ? "(system)" : ""}
-                </option>
-              ))}
+              {roles
+                .filter(
+                  (r) => user?.role_key === "super_admin" || r.key !== "super_admin",
+                )
+                .map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} {r.is_system ? "(system)" : ""}
+                  </option>
+                ))}
             </Select>
           </Field>
           <Field label="Primary site">
@@ -199,24 +613,31 @@ export default function UsersPage() {
             </Select>
           </Field>
 
-          {error ? (
-            <p className="rounded-lg border border-warn/30 bg-warn-bg px-3 py-2 text-[13px] font-medium text-warn md:col-span-2">
-              {error}
-            </p>
-          ) : null}
-
-          <div className="md:col-span-2">
+          <div className="flex flex-wrap items-center gap-2 md:col-span-2">
             <Button type="submit" size="lg" disabled={submitting}>
               {submitting ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
                 <UserRound className="h-4 w-4" />
               )}
-              Create User Account
+              {editingUserId ? "Update User Account" : "Create User Account"}
             </Button>
+            {editingUserId ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                disabled={submitting}
+                onClick={resetForm}
+              >
+                <X className="h-4 w-4" />
+                Cancel
+              </Button>
+            ) : null}
           </div>
         </form>
-      </Card>
+        </Card>
+      ) : null}
 
       <Card className="mt-6">
         <div className="border-b border-line">
@@ -234,18 +655,21 @@ export default function UsersPage() {
                 <th className="px-5 py-2.5">Residence</th>
                 <th className="px-5 py-2.5">Contact</th>
                 <th className="px-5 py-2.5">Status</th>
+                {canUpdateUsers ? (
+                  <th className="px-5 py-2.5 text-right">Actions</th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center">
+                  <td colSpan={canUpdateUsers ? 7 : 6} className="px-5 py-8 text-center">
                     <RefreshCw className="mx-auto h-5 w-5 animate-spin text-muted" />
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-5 py-8 text-center text-sm text-muted">
+                  <td colSpan={canUpdateUsers ? 7 : 6} className="px-5 py-8 text-center text-sm text-muted">
                     No user accounts yet.
                   </td>
                 </tr>
@@ -254,9 +678,18 @@ export default function UsersPage() {
                   <tr key={u.id} className="border-b border-line-soft text-[13px] hover:bg-canvas">
                     <td className="py-3 pl-5 pr-4">
                       <div className="flex items-center gap-2.5">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-navy text-white">
-                          <UserRound className="h-3.5 w-3.5" />
-                        </span>
+                        {u.profile_image_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={u.profile_image_url}
+                            alt=""
+                            className="h-7 w-7 rounded-full border border-line object-cover"
+                          />
+                        ) : (
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-navy text-white">
+                            <UserRound className="h-3.5 w-3.5" />
+                          </span>
+                        )}
                         <div>
                           <p className="font-medium text-ink">{u.full_name}</p>
                           <p className="flex items-center gap-1 text-xs text-muted">
@@ -291,20 +724,101 @@ export default function UsersPage() {
                       )}
                     </td>
                     <td className="px-5 py-3">
-                      {u.locked_out ? (
-                        <StatusBadge tone="warning">Locked</StatusBadge>
-                      ) : u.active ? (
-                        <StatusBadge tone="success">Active</StatusBadge>
+                      {u.registration_status === "pending" ? (
+                        <StatusBadge tone="warning">Pending approval</StatusBadge>
+                      ) : u.registration_status === "rejected" ? (
+                        <StatusBadge tone="warning">Rejected</StatusBadge>
                       ) : (
-                        <StatusBadge tone="warning">Inactive</StatusBadge>
+                        <div className="flex items-center gap-2">
+                          {u.locked_out ? (
+                            <StatusBadge tone="warning">Locked</StatusBadge>
+                          ) : null}
+                          {canManageUsers ? (
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={u.active}
+                              aria-label={`${u.active ? "Deactivate" : "Activate"} ${u.full_name}`}
+                              title={
+                                u.id === user?.id
+                                  ? "You cannot change your own account status."
+                                  : undefined
+                              }
+                              disabled={togglingId === u.id || u.id === user?.id}
+                              onClick={() => void toggleActive(u)}
+                              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                u.active ? "bg-success" : "bg-slate-300"
+                              }`}
+                            >
+                              <span
+                                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow-sm transition-transform ${
+                                  u.active ? "translate-x-6" : "translate-x-1"
+                                }`}
+                              />
+                            </button>
+                          ) : null}
+                          <span
+                            className={`text-xs font-medium ${
+                              u.active ? "text-success" : "text-muted"
+                            }`}
+                          >
+                            {u.active ? "Active" : "Inactive"}
+                          </span>
+                        </div>
                       )}
                     </td>
+                    {canUpdateUsers ? (
+                      <td className="px-5 py-3 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => startEdit(u)}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                      </td>
+                    ) : null}
                   </tr>
                 ))
               )}
             </tbody>
           </table>
         </div>
+        {meta ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-5 py-3 text-xs text-muted">
+            <span>
+              Showing {meta.from ?? 0}–{meta.to ?? 0} of {meta.count} record
+              {meta.count === 1 ? "" : "s"}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!meta.prev || loading}
+                onClick={() => void load(meta.prev!)}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Previous
+              </Button>
+              <span>
+                Page {meta.page} of {meta.pages}
+              </span>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!meta.next || loading}
+                onClick={() => void load(meta.next!)}
+              >
+                Next
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+        ) : null}
       </Card>
     </div>
   );

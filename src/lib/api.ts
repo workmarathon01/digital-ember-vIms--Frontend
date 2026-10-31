@@ -34,6 +34,12 @@ const API_BASE_URL =
 const ACCESS_KEY = "visitrack.access_token";
 const REFRESH_KEY = "visitrack.refresh_token";
 const USER_KEY = "visitrack.user";
+const SESSION_EXPIRED_KEY = "visitrack.session_expired";
+
+export const SESSION_EXPIRED_EVENT = "visitrack:session-expired";
+
+let refreshPromise: Promise<boolean> | null = null;
+let sessionExpiryNotified = false;
 
 function storage(): Storage | null {
   return typeof window === "undefined" ? null : window.localStorage;
@@ -63,6 +69,14 @@ export function storeSession(tokens: TokenResponse): void {
   s.setItem(ACCESS_KEY, tokens.access_token);
   s.setItem(REFRESH_KEY, tokens.refresh_token);
   s.setItem(USER_KEY, JSON.stringify(tokens.user));
+  sessionExpiryNotified = false;
+  if (typeof window !== "undefined") {
+    try {
+      window.sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+    } catch {
+      // Storage can be unavailable in privacy-restricted browsers.
+    }
+  }
 }
 
 export function clearSession(): void {
@@ -71,6 +85,18 @@ export function clearSession(): void {
   s.removeItem(ACCESS_KEY);
   s.removeItem(REFRESH_KEY);
   s.removeItem(USER_KEY);
+}
+
+export function consumeSessionExpiredNotice(): boolean {
+  if (typeof window === "undefined") return false;
+
+  try {
+    const expired = window.sessionStorage.getItem(SESSION_EXPIRED_KEY) === "1";
+    if (expired) window.sessionStorage.removeItem(SESSION_EXPIRED_KEY);
+    return expired;
+  } catch {
+    return false;
+  }
 }
 
 export class ApiError extends Error {
@@ -93,27 +119,72 @@ type RequestOptions = {
   retry?: boolean;
 };
 
-async function refreshAccessToken(): Promise<boolean> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return false;
+function notifySessionExpired(): void {
+  clearSession();
+
+  if (sessionExpiryNotified) return;
+  sessionExpiryNotified = true;
+
+  if (typeof window === "undefined") return;
 
   try {
-    const res = await fetch(
-      `${API_BASE_URL}/session/refresh`,
-      {
+    window.sessionStorage.setItem(SESSION_EXPIRED_KEY, "1");
+  } catch {
+    // Storage can be unavailable in privacy-restricted browsers.
+  }
+  window.dispatchEvent(new Event(SESSION_EXPIRED_EVENT));
+}
+
+async function refreshAccessToken(): Promise<boolean> {
+  // Several page loads can request data at the same time. Share one refresh
+  // request instead of letting every failed call try to refresh separately.
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      notifySessionExpired();
+      return false;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/session/refresh`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refresh_token: refreshToken }),
-      },
-    );
+      });
 
-    const payload = (await res.json()) as TokenResponse | ApiErrorBody;
-    if (!res.ok || !("access_token" in payload)) return false;
-    storeSession(payload);
-    return true;
-  } catch {
-    return false;
-  }
+      const text = await res.text();
+      let payload: TokenResponse | ApiErrorBody | null = null;
+      if (text) {
+        try {
+          payload = JSON.parse(text) as TokenResponse | ApiErrorBody;
+        } catch {
+          payload = null;
+        }
+      }
+
+      if (res.status === 401 || !payload || !("access_token" in payload)) {
+        // Only an authentication rejection means the session is unrecoverable.
+        // A server or network failure should not sign the user out.
+        if (res.status === 401) notifySessionExpired();
+        return false;
+      }
+
+      storeSession(payload);
+      return true;
+    } catch {
+      return false;
+    }
+  })().finally(() => {
+    refreshPromise = null;
+  });
+
+  return refreshPromise;
+}
+
+export async function refreshSession(): Promise<boolean> {
+  return refreshAccessToken();
 }
 
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -143,6 +214,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     if (refreshed) {
       return request<T>(path, { ...options, retry: false });
     }
+  } else if (res.status === 401 && auth) {
+    // The retried request still rejected the new token, so the session cannot
+    // be recovered. Clear it and let the auth provider redirect to sign-in.
+    notifySessionExpired();
   }
 
   const text = await res.text();
@@ -219,15 +294,85 @@ export async function createStaff(
   });
 }
 
-export async function fetchUsers(): Promise<UserListResponse> {
-  return request<UserListResponse>("/users.json");
+export async function fetchUsers(page = 1): Promise<UserListResponse> {
+  return request<UserListResponse>(`/users.json?page=${page}`);
+}
+
+export async function fetchPendingRegistrations(
+  page = 1,
+): Promise<UserListResponse> {
+  return request<UserListResponse>(
+    `/users/pending_registrations.json?page=${page}`,
+  );
+}
+
+export async function approveUserRegistration(
+  id: number,
+  note?: string,
+): Promise<User> {
+  return request<User>(`/users/${id}/approve_registration.json`, {
+    method: "POST",
+    body: note ? { note } : {},
+  });
+}
+
+export async function rejectUserRegistration(
+  id: number,
+  note?: string,
+): Promise<User> {
+  return request<User>(`/users/${id}/reject_registration.json`, {
+    method: "POST",
+    body: note ? { note } : {},
+  });
+}
+
+function userFormData(
+  params: Record<string, unknown>,
+  profileImage?: File | null,
+): FormData {
+  const formData = new FormData();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined || value === null) continue;
+    formData.append(`user[${key}]`, String(value));
+  }
+
+  if (profileImage) formData.append("user[profile_image]", profileImage);
+
+  return formData;
 }
 
 export async function createUser(
   params: Record<string, unknown>,
+  profileImage?: File | null,
 ): Promise<User> {
+  if (profileImage) {
+    return request<User>("/users.json", {
+      method: "POST",
+      formData: userFormData(params, profileImage),
+    });
+  }
+
   return request<User>("/users.json", {
     method: "POST",
+    body: { user: params },
+  });
+}
+
+export async function updateUser(
+  id: number,
+  params: Record<string, unknown>,
+  profileImage?: File | null,
+): Promise<User> {
+  if (profileImage) {
+    return request<User>(`/users/${id}.json`, {
+      method: "PATCH",
+      formData: userFormData(params, profileImage),
+    });
+  }
+
+  return request<User>(`/users/${id}.json`, {
+    method: "PATCH",
     body: { user: params },
   });
 }

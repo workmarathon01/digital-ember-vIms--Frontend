@@ -50,7 +50,7 @@ export function ProfileImageInput({ file, preview, onChange }: Props) {
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={shown}
-            alt="Visitor profile preview"
+            alt="Profile preview"
             className="h-full w-full object-cover"
           />
         ) : (

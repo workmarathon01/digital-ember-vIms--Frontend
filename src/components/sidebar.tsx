@@ -16,12 +16,18 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { LogoMark } from "./brand-logo";
 import { useAuth } from "@/lib/auth-context";
+import {
+  can,
+  hasFeatureAccess,
+  type Permission,
+} from "@/lib/permissions";
 
 type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   featureKey?: string;
+  permission?: Permission;
 };
 
 const navItems: NavItem[] = [
@@ -31,33 +37,50 @@ const navItems: NavItem[] = [
     label: "Sites & Properties",
     icon: Building2,
     featureKey: "property_management",
+    permission: { resource: "sites", action: "update" },
   },
   {
     href: "/visitors",
     label: "Pre-registration",
     icon: ClipboardList,
     featureKey: "visitor_management",
+    permission: { resource: "visitors", action: "read" },
   },
   {
     href: "/staffs",
     label: "Staff Directory",
     icon: Users,
     featureKey: "staff_management",
+    permission: { resource: "staffs", action: "read" },
   },
   {
     href: "/users",
     label: "Users & Roles",
     icon: UserCog,
     featureKey: "user_management",
+    permission: { resource: "users", action: "read" },
   },
   {
     href: "/kiosk",
     label: "Kiosk Check-in",
     icon: MonitorSmartphone,
     featureKey: "kiosk_mode",
+    permission: { resource: "visitors", action: "check_in" },
   },
-  { href: "/reports", label: "Reports", icon: BarChart3, featureKey: "reports" },
-  { href: "/features", label: "Feature Access", icon: Sparkles },
+  {
+    href: "/reports",
+    label: "Reports",
+    icon: BarChart3,
+    featureKey: "reports",
+    permission: { resource: "visitors", action: "export" },
+  },
+  {
+    href: "/features",
+    label: "Feature Access",
+    icon: Sparkles,
+    featureKey: "feature_access",
+    permission: { resource: "features", action: "update" },
+  },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -65,18 +88,16 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuth();
-  // Fail open for older sessions and for a database with no feature catalog.
-  // When the catalog is configured, only gate navigation for users who have a
-  // resolved site-scoped feature list.
-  const enabledFeatures =
-    user?.features_configured === true && Array.isArray(user.feature_keys)
-      ? user.feature_keys
-      : null;
-  const visibleNavItems = enabledFeatures
-    ? navItems.filter(
-        (item) => !item.featureKey || enabledFeatures.includes(item.featureKey),
-      )
-    : navItems;
+  const visibleNavItems = navItems.filter((item) => {
+    if (
+      item.permission &&
+      !can(user, item.permission.resource, item.permission.action)
+    ) {
+      return false;
+    }
+
+    return hasFeatureAccess(user, item.featureKey);
+  });
 
   return (
     <aside className="fixed left-0 top-0 z-50 flex h-screen w-64 flex-col justify-between bg-navy text-white">
@@ -111,9 +132,18 @@ export function Sidebar() {
 
       <div className="shrink-0 border-t border-white/10 bg-navy px-4 py-4">
         <div className="flex items-center gap-3 rounded-md px-2 py-2">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[13px] font-bold text-white">
-            {user?.full_name?.slice(0, 2).toUpperCase() ?? "GT"}
-          </div>
+          {user?.profile_image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={user.profile_image_url}
+              alt=""
+              className="h-9 w-9 shrink-0 rounded-full border border-white/20 object-cover"
+            />
+          ) : (
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-[13px] font-bold text-white">
+              {user?.full_name?.slice(0, 2).toUpperCase() ?? "GT"}
+            </div>
+          )}
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-medium text-white">
               {user?.full_name ?? "Guest"}

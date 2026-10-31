@@ -22,9 +22,12 @@ import {
   fetchSites,
   fetchUserFeatures,
   fetchUsers,
+  refreshSession,
   updateSiteFeatures,
   updateUserFeatures,
 } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { can } from "@/lib/permissions";
 import type {
   Feature,
   FeatureCategory,
@@ -104,6 +107,11 @@ function Metric({
 }
 
 export default function FeaturesPage() {
+  const { user: currentUser, refreshUser } = useAuth();
+  const canCreateFeature = can(currentUser, "features", "create");
+  const canDeleteFeature = can(currentUser, "features", "destroy");
+  const canUpdateSiteFeatures = can(currentUser, "site_features", "update");
+  const canUpdateUserFeatures = can(currentUser, "user_features", "update");
   const [features, setFeatures] = useState<Feature[]>([]);
   const [templates, setTemplates] = useState<FeatureTemplate[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
@@ -306,9 +314,10 @@ export default function FeaturesPage() {
             subtitle="A feature is a module or capability that can be enabled independently."
             action={<Sparkles className="h-4 w-4 text-muted" />}
           >
-            <form
-              className="grid gap-3 md:grid-cols-2"
-              onSubmit={(e) => {
+            {canCreateFeature ? (
+              <form
+                className="grid gap-3 md:grid-cols-2"
+                onSubmit={(e) => {
                 e.preventDefault();
                 void run(
                   "catalog",
@@ -328,53 +337,54 @@ export default function FeaturesPage() {
                 );
               }}
             >
-              <div className="md:col-span-2">
-                <Field
-                  label="Standard feature"
-                  hint="Pick a standard capability to use its stable key, name and category. Use Custom feature for anything else."
-                >
-                  <Select
-                    value={catalogTemplateKey}
-                    disabled={availableTemplates.length === 0}
-                    onChange={(e) => {
-                      const key = e.target.value;
-                      setCatalogTemplateKey(key);
-                      const template = templates.find((item) => item.key === key);
-                      if (template) {
-                        setCatalogForm({
-                          name: template.name,
-                          key: template.key,
-                          category: template.category,
-                          description: template.description,
-                        });
-                      } else {
-                        setCatalogForm({ ...catalogForm, key: "" });
-                      }
-                    }}
-                  >
-                    <option value="">
-                      {availableTemplates.length === 0
-                        ? "All standard features are already in the catalog"
-                        : "Custom feature"}
-                    </option>
-                    {availableTemplates.map((template) => (
-                      <option key={template.key} value={template.key}>
-                        {template.name} ({template.key})
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-              <Field label="Feature name" required>
-                <TextInput
+              <Field
+                label="Feature name"
+                required
+                hint="Select a standard capability to use its stable key, name and category. Choose Custom feature for anything else."
+              >
+                <Select
                   required
-                  value={catalogForm.name}
-                  placeholder="e.g. Parking Management"
-                  onChange={(e) =>
-                    setCatalogForm({ ...catalogForm, name: e.target.value })
-                  }
-                />
+                  value={catalogTemplateKey}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setCatalogTemplateKey(value);
+                    const template = templates.find((item) => item.key === value);
+                    if (template) {
+                      setCatalogForm({
+                        name: template.name,
+                        key: template.key,
+                        category: template.category,
+                        description: template.description,
+                      });
+                    } else {
+                      setCatalogForm({
+                        ...emptyCatalogForm,
+                        category: catalogForm.category,
+                      });
+                    }
+                  }}
+                >
+                  <option value="">Select feature name</option>
+                  {availableTemplates.map((template) => (
+                    <option key={template.key} value={template.key}>
+                      {template.name}
+                    </option>
+                  ))}
+                  <option value="__custom__">Custom feature</option>
+                </Select>
               </Field>
+              {catalogTemplateKey === "__custom__" ? (
+                <Field label="Custom feature name" required>
+                  <TextInput
+                    required
+                    value={catalogForm.name}
+                    placeholder="e.g. Parking Management"
+                    onChange={(e) =>
+                      setCatalogForm({ ...catalogForm, name: e.target.value })
+                    }
+                  />
+                </Field>
+              ) : null}
               <Field label="Category">
                 <Select
                   value={catalogForm.category}
@@ -411,7 +421,8 @@ export default function FeaturesPage() {
                   Add feature
                 </Button>
               </div>
-            </form>
+              </form>
+            ) : null}
 
             <div className="mt-5 overflow-x-auto">
               <table className="w-full text-left">
@@ -443,25 +454,27 @@ export default function FeaturesPage() {
                         </td>
                         <td className="px-3 py-2.5 text-muted">{feature.sites_count}</td>
                         <td className="px-3 py-2.5 text-right">
-                          <button
-                            type="button"
-                            aria-label={`Delete ${feature.name}`}
-                            className="text-muted hover:text-warn"
-                            onClick={() => {
-                              if (!window.confirm(`Delete ${feature.name}?`)) return;
-                              void run(
-                                `delete-${feature.id}`,
-                                async () => {
-                                  await deleteFeature(feature.id);
-                                  const refreshed = await fetchFeatures();
-                                  setFeatures(refreshed.data);
-                                },
-                                "Feature removed from the catalog.",
-                              );
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {canDeleteFeature ? (
+                            <button
+                              type="button"
+                              aria-label={`Delete ${feature.name}`}
+                              className="text-muted hover:text-warn"
+                              onClick={() => {
+                                if (!window.confirm(`Delete ${feature.name}?`)) return;
+                                void run(
+                                  `delete-${feature.id}`,
+                                  async () => {
+                                    await deleteFeature(feature.id);
+                                    const refreshed = await fetchFeatures();
+                                    setFeatures(refreshed.data);
+                                  },
+                                  "Feature removed from the catalog.",
+                                );
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          ) : null}
                         </td>
                       </tr>
                     ))
@@ -505,6 +518,7 @@ export default function FeaturesPage() {
                           type="checkbox"
                           className="mt-0.5"
                           checked={checked}
+                          disabled={!canUpdateSiteFeatures}
                           onChange={() => toggleSiteFeature(feature.id)}
                         />
                         <span>
@@ -525,12 +539,13 @@ export default function FeaturesPage() {
                   <p className="text-xs text-muted">
                     {siteFeatureIds.length} of {siteAccess.available_count} features enabled
                   </p>
-                  <Button
-                    type="button"
-                    disabled={saving === "site"}
-                    onClick={() =>
-                      void run(
-                        "site",
+                  {canUpdateSiteFeatures ? (
+                    <Button
+                      type="button"
+                      disabled={saving === "site"}
+                      onClick={() =>
+                        void run(
+                          "site",
                         async () => {
                           await updateSiteFeatures(Number(siteId), siteFeatureIds);
                           await loadSiteAccess(Number(siteId));
@@ -547,8 +562,9 @@ export default function FeaturesPage() {
                     ) : (
                       <Check className="h-4 w-4" />
                     )}
-                    Save site access
-                  </Button>
+                      Save site access
+                    </Button>
+                  ) : null}
                 </div>
               </>
             ) : (
@@ -627,6 +643,7 @@ export default function FeaturesPage() {
                             <td className="px-3 py-2.5">
                               <Select
                                 value={overrideStates[feature.id] ?? "inherit"}
+                                disabled={!canUpdateUserFeatures}
                                 onChange={(e) =>
                                   setOverrideStates({
                                     ...overrideStates,
@@ -650,18 +667,27 @@ export default function FeaturesPage() {
                       {overriddenFeatures} explicit override
                       {overriddenFeatures === 1 ? "" : "s"}
                     </p>
-                    <Button
-                      type="button"
-                      disabled={saving === "user"}
-                      onClick={() =>
-                        void run(
-                          "user",
+                    {canUpdateUserFeatures ? (
+                      <Button
+                        type="button"
+                        disabled={saving === "user"}
+                        onClick={() =>
+                          void run(
+                            "user",
                           async () => {
                             await updateUserFeatures(
                               Number(userId),
                               Number(userSiteId),
                               overrideStates,
                             );
+
+                            // Keep the sidebar and stored session in sync when
+                            // someone changes their own feature access.
+                            if (currentUser?.id === Number(userId)) {
+                              const refreshed = await refreshSession();
+                              if (refreshed) refreshUser();
+                            }
+
                             await loadUserAccess(Number(userId), Number(userSiteId));
                           },
                           "User feature access updated.",
@@ -673,8 +699,9 @@ export default function FeaturesPage() {
                       ) : (
                         <Check className="h-4 w-4" />
                       )}
-                      Save user access
-                    </Button>
+                        Save user access
+                      </Button>
+                    ) : null}
                   </div>
                 </>
               ) : (
