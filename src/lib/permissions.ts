@@ -6,6 +6,19 @@ export type Permission = {
 };
 
 /**
+ * Features that are reserved for super admins. They must never be granted to
+ * another role, even if the feature catalog or a site entitlement contains them.
+ */
+export const superAdminOnlyFeatures = new Set(["feature_access"]);
+
+/** Routes that only a super admin may open, regardless of permissions. */
+export const superAdminOnlyRoutes = new Set(["/features"]);
+
+export function isSuperAdmin(user: User | null): boolean {
+  return user?.role_key === "super_admin";
+}
+
+/**
  * Super admins bypass every permission check. Sessions created before the
  * permissions payload existed also fail open, so a deploy does not lock
  * everyone out until their next sign-in.
@@ -16,7 +29,7 @@ export function can(
   action: string,
 ): boolean {
   if (!user) return false;
-  if (user.role_key === "super_admin") return true;
+  if (isSuperAdmin(user)) return true;
   if (!Array.isArray(user.permissions)) return true;
   return user.permissions.includes(`${resource}:${action}`);
 }
@@ -38,7 +51,6 @@ export const routeFeatures: Record<string, string> = {
   "/users": "user_management",
   "/kiosk": "kiosk_mode",
   "/reports": "reports",
-  "/features": "feature_access",
 };
 
 /**
@@ -50,8 +62,9 @@ export function hasFeatureAccess(
   featureKey?: string,
 ): boolean {
   if (!user) return false;
-  if (user.role_key === "super_admin") return true;
+  if (isSuperAdmin(user)) return true;
   if (!featureKey) return true;
+  if (superAdminOnlyFeatures.has(featureKey)) return false;
   if (
     user.features_configured !== true ||
     !Array.isArray(user.feature_keys)

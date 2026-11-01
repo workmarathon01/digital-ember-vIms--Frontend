@@ -8,8 +8,10 @@ import { useAuth } from "@/lib/auth-context";
 import {
   can,
   hasFeatureAccess,
+  isSuperAdmin,
   routeFeatures,
   routePermissions,
+  superAdminOnlyRoutes,
 } from "@/lib/permissions";
 
 export default function AppLayout({ children }: { children: ReactNode }) {
@@ -18,7 +20,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   const { user, isAuthenticated, hydrated } = useAuth();
   const required = routePermissions[pathname];
   const requiredFeature = routeFeatures[pathname];
+  const requiresSuperAdmin = superAdminOnlyRoutes.has(pathname);
   const allowed =
+    (!requiresSuperAdmin || isSuperAdmin(user)) &&
     (!required || can(user, required.resource, required.action)) &&
     hasFeatureAccess(user, requiredFeature);
 

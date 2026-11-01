@@ -19,6 +19,7 @@ import { useAuth } from "@/lib/auth-context";
 import {
   can,
   hasFeatureAccess,
+  isSuperAdmin,
   type Permission,
 } from "@/lib/permissions";
 
@@ -28,6 +29,7 @@ type NavItem = {
   icon: typeof LayoutDashboard;
   featureKey?: string;
   permission?: Permission;
+  superAdminOnly?: boolean;
 };
 
 const navItems: NavItem[] = [
@@ -78,7 +80,7 @@ const navItems: NavItem[] = [
     href: "/features",
     label: "Feature Access",
     icon: Sparkles,
-    featureKey: "feature_access",
+    superAdminOnly: true,
     permission: { resource: "features", action: "update" },
   },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -89,6 +91,8 @@ export function Sidebar() {
   const router = useRouter();
   const { user, logout } = useAuth();
   const visibleNavItems = navItems.filter((item) => {
+    if (item.superAdminOnly && !isSuperAdmin(user)) return false;
+
     if (
       item.permission &&
       !can(user, item.permission.resource, item.permission.action)

@@ -298,6 +298,25 @@ export async function fetchUsers(page = 1): Promise<UserListResponse> {
   return request<UserListResponse>(`/users.json?page=${page}`);
 }
 
+/**
+ * Fetch every user across paginated pages. Feature Access needs the full list so
+ * an administrator can review access for any user, not just the first page.
+ */
+export async function fetchAllUsers(): Promise<User[]> {
+  const users: User[] = [];
+  let page = 1;
+  let pages = 1;
+
+  do {
+    const response = await fetchUsers(page);
+    users.push(...response.data);
+    pages = response.meta.pages;
+    page += 1;
+  } while (page <= pages && page <= 100);
+
+  return users;
+}
+
 export async function fetchPendingRegistrations(
   page = 1,
 ): Promise<UserListResponse> {

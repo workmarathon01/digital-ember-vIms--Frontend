@@ -16,18 +16,18 @@ import { Button, Card, Field, Select, TextInput } from "@/components/ui";
 import {
   createFeature,
   deleteFeature,
+  fetchAllUsers,
   fetchFeatures,
   fetchFeatureTemplates,
   fetchSiteFeatures,
   fetchSites,
   fetchUserFeatures,
-  fetchUsers,
   refreshSession,
   updateSiteFeatures,
   updateUserFeatures,
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { can } from "@/lib/permissions";
+import { can, superAdminOnlyFeatures } from "@/lib/permissions";
 import type {
   Feature,
   FeatureCategory,
@@ -129,6 +129,12 @@ export default function FeaturesPage() {
     Record<number, FeatureOverrideState>
   >({});
 
+  const [summarySiteId, setSummarySiteId] = useState("");
+  const [userSummary, setUserSummary] = useState<
+    Record<number, UserFeatureAccess>
+  >({});
+  const [summaryLoading, setSummaryLoading] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -136,8 +142,15 @@ export default function FeaturesPage() {
 
   async function loadSiteAccess(id: number) {
     const access = await fetchSiteFeatures(id);
+    const reservedIds = new Set(
+      access.features
+        .filter((feature) => superAdminOnlyFeatures.has(feature.key))
+        .map((feature) => feature.id),
+    );
     setSiteAccess(access);
-    setSiteFeatureIds(access.enabled_feature_ids);
+    setSiteFeatureIds(
+      access.enabled_feature_ids.filter((featureId) => !reservedIds.has(featureId)),
+    );
     return access;
   }
 
@@ -146,10 +159,40 @@ export default function FeaturesPage() {
     setUserAccess(access);
     setOverrideStates(
       Object.fromEntries(
-        access.features.map((feature) => [feature.id, feature.override]),
+        access.features
+          .filter((feature) => !superAdminOnlyFeatures.has(feature.key))
+          .map((feature) => [feature.id, feature.override]),
       ),
     );
     return access;
+  }
+
+  async function loadUserSummary(
+    selectedSiteId: string,
+    userList: User[] = users,
+  ) {
+    if (!selectedSiteId || userList.length === 0) {
+      setUserSummary({});
+      return;
+    }
+
+    setSummaryLoading(true);
+    try {
+      const entries = await Promise.all(
+        userList.map(async (listedUser) => {
+          const access = await fetchUserFeatures(
+            listedUser.id,
+            Number(selectedSiteId),
+          );
+          return [listedUser.id, access] as const;
+        }),
+      );
+      setUserSummary(Object.fromEntries(entries));
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setSummaryLoading(false);
+    }
   }
 
   async function loadBase() {
@@ -158,17 +201,25 @@ export default function FeaturesPage() {
         fetchFeatures(),
         fetchFeatureTemplates(),
         fetchSites(),
-        fetchUsers(),
+        fetchAllUsers(),
       ]);
-      setFeatures(featureRes.data);
+      setFeatures(
+        featureRes.data.filter(
+          (feature) => !superAdminOnlyFeatures.has(feature.key),
+        ),
+      );
       setTemplates(templateRes);
       setSites(siteRes.data);
-      setUsers(userRes.data);
+      setUsers(userRes);
 
       const firstSite = siteRes.data[0];
       if (firstSite) {
         setSiteId(String(firstSite.id));
-        await loadSiteAccess(firstSite.id);
+        setSummarySiteId(String(firstSite.id));
+        await Promise.all([
+          loadSiteAccess(firstSite.id),
+          loadUserSummary(String(firstSite.id), userRes),
+        ]);
       }
     } catch (err) {
       setError(errorMessage(err));
@@ -249,6 +300,30 @@ export default function FeaturesPage() {
     }
   }
 
+  async function chooseSummarySite(value: string) {
+    setSummarySiteId(value);
+    setUserSummary({});
+    await loadUserSummary(value);
+  }
+
+  async function reviewUser(listedUser: User) {
+    if (!summarySiteId) return;
+
+    setUserId(String(listedUser.id));
+    setUserSiteId(summarySiteId);
+    setUserAccess(null);
+    setOverrideStates({});
+
+    try {
+      await loadUserAccess(listedUser.id, Number(summarySiteId));
+      document
+        .getElementById("user-overrides")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (err) {
+      setError(errorMessage(err));
+    }
+  }
+
   function toggleSiteFeature(featureId: number) {
     setSiteFeatureIds((current) =>
       current.includes(featureId)
@@ -261,9 +336,19 @@ export default function FeaturesPage() {
   const availableTemplates = templates.filter(
     (template) => !features.some((feature) => feature.key === template.key),
   );
-  const overriddenFeatures = userAccess
-    ? userAccess.features.filter((feature) => feature.override !== "inherit").length
-    : 0;
+  const siteFeatures = siteAccess
+    ? siteAccess.features.filter(
+        (feature) => !superAdminOnlyFeatures.has(feature.key),
+      )
+    : [];
+  const userAccessFeatures = userAccess
+    ? userAccess.features.filter(
+        (feature) => !superAdminOnlyFeatures.has(feature.key),
+      )
+    : [];
+  const overriddenFeatures = userAccessFeatures.filter(
+    (feature) => feature.override !== "inherit",
+  ).length;
 
   return (
     <div>
@@ -331,7 +416,11 @@ export default function FeaturesPage() {
                     setCatalogForm(emptyCatalogForm);
                     setCatalogTemplateKey("");
                     const refreshed = await fetchFeatures();
-                    setFeatures(refreshed.data);
+                    setFeatures(
+                      refreshed.data.filter(
+                        (feature) => !superAdminOnlyFeatures.has(feature.key),
+                      ),
+                    );
                   },
                   "Feature added to the catalog.",
                 );
@@ -503,7 +592,7 @@ export default function FeaturesPage() {
             {siteAccess ? (
               <>
                 <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                  {siteAccess.features.map((feature) => {
+                  {siteFeatures.map((feature) => {
                     const checked = siteFeatureIds.includes(feature.id);
                     return (
                       <label
@@ -537,7 +626,7 @@ export default function FeaturesPage() {
 
                 <div className="mt-4 flex items-center justify-between">
                   <p className="text-xs text-muted">
-                    {siteFeatureIds.length} of {siteAccess.available_count} features enabled
+                    {siteFeatureIds.length} of {siteFeatures.length} features enabled
                   </p>
                   {canUpdateSiteFeatures ? (
                     <Button
@@ -551,6 +640,9 @@ export default function FeaturesPage() {
                           await loadSiteAccess(Number(siteId));
                           if (userAccess && userSiteId === siteId) {
                             await loadUserAccess(Number(userId), Number(userSiteId));
+                          }
+                          if (summarySiteId === siteId) {
+                            await loadUserSummary(summarySiteId);
                           }
                         },
                         "Site feature access updated.",
@@ -575,6 +667,123 @@ export default function FeaturesPage() {
           </SectionCard>
 
           <div className="xl:col-span-2">
+            <SectionCard
+              title="User Access Overview"
+              subtitle="See which features each user can actually use at a site. Click Review to inspect or change that user's overrides."
+              action={<ShieldCheck className="h-4 w-4 text-muted" />}
+            >
+              <Field label="Site">
+                <Select
+                  value={summarySiteId}
+                  onChange={(e) => void chooseSummarySite(e.target.value)}
+                >
+                  <option value="">Select a site</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.display_name} ({site.code})
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+
+              {summaryLoading ? (
+                <div className="mt-4 flex items-center gap-2 text-sm text-muted">
+                  <RefreshCw className="h-4 w-4 animate-spin" />
+                  Loading user access…
+                </div>
+              ) : users.length === 0 ? (
+                <p className="mt-4 text-sm text-muted">No users found.</p>
+              ) : (
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="bg-canvas text-[11px] font-semibold uppercase tracking-wider text-muted">
+                        <th className="px-3 py-2">User</th>
+                        <th className="px-3 py-2">Role</th>
+                        <th className="px-3 py-2">Effective access</th>
+                        <th className="px-3 py-2">Overrides</th>
+                        <th className="px-3 py-2" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {users.map((listedUser) => {
+                        const access = userSummary[listedUser.id];
+                        const effectiveFeatures = access
+                          ? access.features.filter(
+                              (feature) =>
+                                feature.effective &&
+                                !superAdminOnlyFeatures.has(feature.key),
+                            )
+                          : [];
+                        const overrideCount = access
+                          ? access.features.filter(
+                              (feature) => feature.override !== "inherit",
+                            ).length
+                          : 0;
+
+                        return (
+                          <tr
+                            key={listedUser.id}
+                            className="border-b border-line-soft text-[13px]"
+                          >
+                            <td className="py-2.5 pr-3">
+                              <p className="font-medium text-ink">
+                                {listedUser.full_name}
+                              </p>
+                              <p className="text-[11px] text-muted">
+                                {listedUser.email}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2.5 text-muted">
+                              {listedUser.role_label ?? "—"}
+                            </td>
+                            <td className="px-3 py-2.5">
+                              {!access ? (
+                                <span className="text-muted">—</span>
+                              ) : effectiveFeatures.length === 0 ? (
+                                <span className="text-muted">No features</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1">
+                                  {effectiveFeatures.map((feature) => (
+                                    <span
+                                      key={feature.id}
+                                      className="rounded-full bg-success-bg px-2 py-0.5 text-[11px] font-semibold text-success"
+                                    >
+                                      {feature.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2.5 text-muted">
+                              {!access
+                                ? "—"
+                                : overrideCount > 0
+                                  ? `${overrideCount} custom`
+                                  : "Site default"}
+                            </td>
+                            <td className="px-3 py-2.5 text-right">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => void reviewUser(listedUser)}
+                                disabled={!summarySiteId}
+                              >
+                                Review
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </SectionCard>
+          </div>
+
+          <div id="user-overrides" className="xl:col-span-2">
             <SectionCard
               title="User Overrides"
               subtitle="Inherit the site default, grant explicitly, or revoke a capability for one person."
@@ -620,7 +829,7 @@ export default function FeaturesPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {userAccess.features.map((feature) => (
+                        {userAccessFeatures.map((feature) => (
                           <tr key={feature.id} className="border-b border-line-soft text-[13px]">
                             <td className="py-2.5 pr-3">
                               <p className="font-medium text-ink">{feature.name}</p>
@@ -689,6 +898,10 @@ export default function FeaturesPage() {
                             }
 
                             await loadUserAccess(Number(userId), Number(userSiteId));
+
+                            if (summarySiteId === userSiteId) {
+                              await loadUserSummary(summarySiteId);
+                            }
                           },
                           "User feature access updated.",
                         )
