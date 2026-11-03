@@ -13,6 +13,7 @@ export interface User {
   unit_id?: number | null;
   building_id?: number | null;
   floor_id?: number | null;
+  department_id?: number | null;
   current_site_id?: number | null;
   site_name?: string | null;
   building_name?: string | null;
@@ -60,6 +61,17 @@ export interface Site {
   units_count: number;
   residents_count: number;
   features_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Department {
+  id: number;
+  name: string;
+  code: string;
+  description: string | null;
+  active: boolean;
+  users_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -167,6 +179,17 @@ export interface Unit {
   updated_at: string;
 }
 
+/**
+ * The full site → building → floor → unit tree, loaded once so dependent
+ * dropdowns can be filtered locally without a request per parent change.
+ */
+export interface LocationDirectory {
+  sites: Site[];
+  buildings: Building[];
+  floors: Floor[];
+  units: Unit[];
+}
+
 export interface UserSite {
   id: number;
   user_id: number;
@@ -231,6 +254,7 @@ export interface Visitor {
   checked_in: boolean;
   pass_active: boolean;
   qr_token?: string | null;
+  pass_url?: string | null;
   host_name?: string | null;
   profile_image_url?: string | null;
   location_label?: string | null;
@@ -359,6 +383,7 @@ export interface PublicVisitor {
   host_name: string | null;
   profile_image_url?: string | null;
   qr_token?: string;
+  pass_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -430,8 +455,15 @@ export interface PublicEmployeeSiteOption {
   display_name: string;
 }
 
+export interface PublicEmployeeDepartmentOption {
+  id: number;
+  name: string;
+  code: string;
+}
+
 export interface PublicEmployeeRegistrationOptions {
   sites: PublicEmployeeSiteOption[];
+  departments: PublicEmployeeDepartmentOption[];
   minimum_password_length: number;
 }
 
@@ -488,4 +520,8 @@ export interface UserSiteListResponse {
 export interface FeatureListResponse {
   data: Feature[];
   meta: PaginationMeta;
+}
+
+export interface DepartmentListResponse {
+  data: Department[];
 }

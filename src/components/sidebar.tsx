@@ -8,6 +8,7 @@ import {
   LogOut,
   MonitorSmartphone,
   Settings,
+  Settings2,
   Sparkles,
   UserCog,
   Users,
@@ -82,6 +83,12 @@ const navItems: NavItem[] = [
     icon: Sparkles,
     superAdminOnly: true,
     permission: { resource: "features", action: "update" },
+  },
+  {
+    href: "/setup",
+    label: "Setup",
+    icon: Settings2,
+    permission: { resource: "departments", action: "read" },
   },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

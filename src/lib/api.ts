@@ -3,12 +3,16 @@ import type {
   Building,
   BuildingListResponse,
   DashboardMetrics,
+  Department,
+  DepartmentListResponse,
   Feature,
   FeatureListResponse,
   FeatureOverrideState,
   FeatureTemplate,
   Floor,
   FloorListResponse,
+  LocationDirectory,
+  PaginationMeta,
   RoleListResponse,
   Site,
   SiteFeatureAccess,
@@ -148,9 +152,12 @@ async function refreshAccessToken(): Promise<boolean> {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/session/refresh`, {
+      const res = await fetch(`${API_BASE_URL}/session/refresh.json`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
 
@@ -463,6 +470,58 @@ export async function fetchUnits(): Promise<UnitListResponse> {
   return request<UnitListResponse>("/units.json");
 }
 
+type PaginatedPayload<T> = {
+  data: T[];
+  meta: PaginationMeta;
+};
+
+/**
+ * Reads every page of a paginated JSON endpoint. Location dropdowns must see
+ * the whole tree, not just the first 25 records.
+ */
+async function fetchAllPages<T>(path: string): Promise<T[]> {
+  const first = await request<PaginatedPayload<T>>(path);
+  const records = [...first.data];
+  const pages = first.meta?.pages ?? 1;
+
+  if (pages > 1) {
+    const remaining = await Promise.all(
+      Array.from({ length: pages - 1 }, (_, index) =>
+        request<PaginatedPayload<T>>(`${path}?page=${index + 2}`),
+      ),
+    );
+    for (const page of remaining) records.push(...page.data);
+  }
+
+  return records;
+}
+
+async function fetchAllPagesSafe<T>(path: string): Promise<T[]> {
+  try {
+    return await fetchAllPages<T>(path);
+  } catch {
+    // A user may be allowed to build a visitor or user form without being
+    // allowed to browse every part of the property tree. Missing options
+    // should not break the whole screen.
+    return [];
+  }
+}
+
+/**
+ * Loads the complete location hierarchy for dependent dropdowns. Each branch
+ * is resolved independently so a missing permission only empties that level.
+ */
+export async function fetchLocationDirectory(): Promise<LocationDirectory> {
+  const [sites, buildings, floors, units] = await Promise.all([
+    fetchAllPagesSafe<Site>("/sites.json"),
+    fetchAllPagesSafe<Building>("/buildings.json"),
+    fetchAllPagesSafe<Floor>("/floors.json"),
+    fetchAllPagesSafe<Unit>("/units.json"),
+  ]);
+
+  return { sites, buildings, floors, units };
+}
+
 export async function createUnit(params: Record<string, unknown>): Promise<Unit> {
   return request<Unit>("/units.json", {
     method: "POST",
@@ -495,6 +554,33 @@ export async function makePrimaryUserSite(id: number): Promise<UserSite> {
   return request<UserSite>(`/user_sites/${id}/make_primary.json`, {
     method: "POST",
   });
+}
+
+export async function fetchDepartments(): Promise<DepartmentListResponse> {
+  return request<DepartmentListResponse>("/departments.json");
+}
+
+export async function createDepartment(
+  params: Record<string, unknown>,
+): Promise<Department> {
+  return request<Department>("/departments.json", {
+    method: "POST",
+    body: { department: params },
+  });
+}
+
+export async function updateDepartment(
+  id: number,
+  params: Record<string, unknown>,
+): Promise<Department> {
+  return request<Department>(`/departments/${id}.json`, {
+    method: "PATCH",
+    body: { department: params },
+  });
+}
+
+export async function deleteDepartment(id: number): Promise<void> {
+  await request(`/departments/${id}.json`, { method: "DELETE" });
 }
 
 export async function fetchFeatures(): Promise<FeatureListResponse> {

@@ -75,6 +75,12 @@ export function registerVisitor(
   });
 }
 
+export function fetchVisitorPass(token: string): Promise<PublicPassVerification> {
+  return publicRequest<PublicPassVerification>(
+    `/public/visitors/pass.json?token=${encodeURIComponent(token)}`,
+  );
+}
+
 export function verifyPass(code: string): Promise<PublicPassVerification> {
   return publicRequest<PublicPassVerification>(
     `/public/visitors/verify.json?code=${encodeURIComponent(code)}`,

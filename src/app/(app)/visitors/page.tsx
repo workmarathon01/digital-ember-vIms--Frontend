@@ -8,6 +8,7 @@ import {
   Car,
   ClipboardList,
   Download,
+  ExternalLink,
   Loader2,
   MapPin,
   Phone,
@@ -16,14 +17,28 @@ import {
   User as UserIcon,
   X,
 } from "lucide-react";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
 import { ProfileImageInput } from "@/components/profile-image-input";
 import { StatusBadge } from "@/components/status-badge";
 import { useAuth } from "@/lib/auth-context";
 import { can } from "@/lib/permissions";
-import { createVisitor, fetchVisitors } from "@/lib/api";
-import { fetchHosts, fetchPublicFormOptions } from "@/lib/public-api";
-import type { PublicFormOptions, PublicHost, Visitor } from "@/lib/types";
+import { createVisitor, fetchLocationDirectory, fetchVisitors } from "@/lib/api";
+import { fetchHosts } from "@/lib/public-api";
+import {
+  buildingsForSite,
+  findUnit,
+  floorsForBuilding,
+  unitsForFloor,
+} from "@/lib/locations";
+import type {
+  Building,
+  Floor,
+  PublicHost,
+  Site,
+  Unit,
+  Visitor,
+} from "@/lib/types";
 
 const initialForm = {
   name: "",
@@ -36,6 +51,8 @@ const initialForm = {
   vehicle_number: "",
   expected_duration: "30",
   site_id: "",
+  building_id: "",
+  floor_id: "",
   unit_id: "",
   vhost_id: "",
 };
@@ -61,8 +78,15 @@ export default function VisitorsPage() {
   const [error, setError] = useState<string | null>(null);
   const [qrVisitor, setQrVisitor] = useState<Visitor | null>(null);
   const [qrImage, setQrImage] = useState<string | null>(null);
-  const [options, setOptions] = useState<PublicFormOptions>({
+  const [options, setOptions] = useState<{
+    sites: Site[];
+    buildings: Building[];
+    floors: Floor[];
+    units: Unit[];
+  }>({
     sites: [],
+    buildings: [],
+    floors: [],
     units: [],
   });
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -94,7 +118,7 @@ export default function VisitorsPage() {
 
     const base = typeof window === "undefined" ? "" : window.location.origin;
     const payload = base
-      ? `${base}/scan?t=${encodeURIComponent(token)}`
+      ? `${base}/scan/?t=${encodeURIComponent(token)}`
       : token;
     let cancelled = false;
 
@@ -159,12 +183,13 @@ export default function VisitorsPage() {
         if (!cancelled) setLoading(false);
       });
 
-    void fetchPublicFormOptions()
+    void fetchLocationDirectory()
       .then((data) => {
         if (!cancelled) setOptions(data);
       })
       .catch(() => {
-        if (!cancelled) setOptions({ sites: [], units: [] });
+        if (!cancelled)
+          setOptions({ sites: [], buildings: [], floors: [], units: [] });
       })
       .finally(() => {
         if (!cancelled) setOptionsLoading(false);
@@ -175,39 +200,66 @@ export default function VisitorsPage() {
     };
   }, []);
 
-  const unitsForSite = options.units.filter(
-    (unit) => String(unit.site_id) === form.site_id,
+  const buildingsForSelectedSite = buildingsForSite(
+    options.buildings,
+    form.site_id,
+  );
+  const floorsForSelectedBuilding = floorsForBuilding(
+    options.floors,
+    form.building_id,
+  );
+  const unitsForSelectedFloor = unitsForFloor(
+    options.units,
+    form.floor_id,
   );
   const selectedHostMissing =
     Boolean(form.vhost_id) &&
     !hosts.some((host) => String(host.id) === form.vhost_id);
 
   function selectSite(siteId: string) {
-    const keepUnit = Boolean(
-      form.unit_id &&
-        options.units.some(
-          (unit) =>
-            String(unit.id) === form.unit_id &&
-            String(unit.site_id) === siteId,
-        ),
-    );
-
     setForm((current) => ({
       ...current,
       site_id: siteId,
-      unit_id: keepUnit ? current.unit_id : "",
-      vhost_id: keepUnit ? current.vhost_id : "",
+      building_id: "",
+      floor_id: "",
+      unit_id: "",
+      vhost_id: "",
     }));
 
-    if (!keepUnit) void loadHosts("");
+    void loadHosts("");
+  }
+
+  function selectBuilding(buildingId: string) {
+    setForm((current) => ({
+      ...current,
+      building_id: buildingId,
+      floor_id: "",
+      unit_id: "",
+      vhost_id: "",
+    }));
+
+    void loadHosts("");
+  }
+
+  function selectFloor(floorId: string) {
+    setForm((current) => ({
+      ...current,
+      floor_id: floorId,
+      unit_id: "",
+      vhost_id: "",
+    }));
+
+    void loadHosts("");
   }
 
   function selectUnit(unitId: string) {
-    const unit = options.units.find((item) => String(item.id) === unitId);
+    const unit = findUnit(options.units, unitId);
     setForm((current) => ({
       ...current,
       unit_id: unitId,
       site_id: unit ? String(unit.site_id) : current.site_id,
+      building_id: unit ? String(unit.building_id) : current.building_id,
+      floor_id: unit ? String(unit.floor_id) : current.floor_id,
       vhost_id: "",
     }));
     void loadHosts(unitId);
@@ -223,6 +275,8 @@ export default function VisitorsPage() {
         {
           ...form,
           site_id: form.site_id ? Number(form.site_id) : undefined,
+          building_id: form.building_id ? Number(form.building_id) : undefined,
+          floor_id: form.floor_id ? Number(form.floor_id) : undefined,
           unit_id: form.unit_id ? Number(form.unit_id) : undefined,
           vhost_id: form.vhost_id ? Number(form.vhost_id) : undefined,
         },
@@ -346,25 +400,79 @@ export default function VisitorsPage() {
               ))}
             </Select>
           </Field>
+          <Field label="Building" hint="Only buildings at the selected site are listed.">
+            <Select
+              value={form.building_id}
+              onChange={(e) => selectBuilding(e.target.value)}
+              disabled={
+                optionsLoading ||
+                !form.site_id ||
+                buildingsForSelectedSite.length === 0
+              }
+            >
+              <option value="">
+                {!form.site_id
+                  ? "Select a site first"
+                  : buildingsForSelectedSite.length === 0
+                    ? "No buildings at this site"
+                    : "Select a building (optional)"}
+              </option>
+              {buildingsForSelectedSite.map((building) => (
+                <option key={building.id} value={building.id}>
+                  {building.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Floor" hint="Only floors in the selected building are listed.">
+            <Select
+              value={form.floor_id}
+              onChange={(e) => selectFloor(e.target.value)}
+              disabled={
+                !form.building_id || floorsForSelectedBuilding.length === 0
+              }
+            >
+              <option value="">
+                {!form.building_id
+                  ? "Select a building first"
+                  : floorsForSelectedBuilding.length === 0
+                    ? "No floors in this building"
+                    : "Select a floor (optional)"}
+              </option>
+              {floorsForSelectedBuilding.map((floor) => (
+                <option key={floor.id} value={floor.id}>
+                  {floor.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field
             label="Visiting Unit"
             hint={
-              form.site_id
+              form.floor_id
                 ? "Select the unit the visitor is going to."
-                : "Select a site first."
+                : "Select a site, building and floor first."
             }
           >
             <Select
               value={form.unit_id}
               onChange={(e) => selectUnit(e.target.value)}
               disabled={
-                optionsLoading || !form.site_id || unitsForSite.length === 0
+                optionsLoading ||
+                !form.floor_id ||
+                unitsForSelectedFloor.length === 0
               }
             >
-              <option value="">Select a unit (optional)</option>
-              {unitsForSite.map((unit) => (
+              <option value="">
+                {!form.floor_id
+                  ? "Select a floor first"
+                  : unitsForSelectedFloor.length === 0
+                    ? "No units on this floor"
+                    : "Select a unit (optional)"}
+              </option>
+              {unitsForSelectedFloor.map((unit) => (
                 <option key={unit.id} value={unit.id}>
-                  {unit.location_label}
+                  {unit.name}
                 </option>
               ))}
             </Select>
@@ -438,7 +546,9 @@ export default function VisitorsPage() {
               onChange={(e) => update("expected_time", e.target.value)}
             />
           </Field>
-          <Field label="Vehicle Number" hint="Optional — logged for vehicle passes.">
+          <Field label="Vehicle Number" 
+          // hint="Optional — logged for vehicle passes."
+          >
             <TextInput
               placeholder="e.g. MH 01 AB 1234"
               value={form.vehicle_number}
@@ -630,6 +740,15 @@ export default function VisitorsPage() {
 
             <div className="mt-4 space-y-1.5 text-xs text-muted">
               <p>
+                <span className="font-semibold text-ink">Valid from:</span>{" "}
+                {qrVisitor.start_pass
+                  ? new Date(qrVisitor.start_pass).toLocaleString([], {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })
+                  : "—"}
+              </p>
+              <p>
                 <span className="font-semibold text-ink">Valid until:</span>{" "}
                 {qrVisitor.end_pass
                   ? new Date(qrVisitor.end_pass).toLocaleString([], {
@@ -646,11 +765,38 @@ export default function VisitorsPage() {
               ) : null}
             </div>
 
+            {qrVisitor.pass_url ? (
+              <div className="mt-4 rounded-lg border border-line bg-canvas px-3 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Visitor pass link
+                </p>
+                <p className="mt-1 break-all text-[11px] font-medium text-accent-strong">
+                  {qrVisitor.pass_url}
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <CopyLinkButton
+                    value={qrVisitor.pass_url}
+                    label="Copy link"
+                    className="px-2.5 py-1.5 text-[11px]"
+                  />
+                  <a
+                    href={qrVisitor.pass_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11px] font-semibold text-ink transition hover:bg-canvas-2"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                    Open
+                  </a>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-5 flex gap-2">
               {qrImage ? (
                 <a
                   href={qrImage}
-                  download={`visitor-pass-${qrVisitor.pass_code ?? qrVisitor.id}.png`}
+                  download={`access-pass-${qrVisitor.pass_code ?? qrVisitor.id}.png`}
                   className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-line bg-card px-3 py-2.5 text-xs font-semibold text-ink transition hover:bg-canvas-2"
                 >
                   <Download className="h-3.5 w-3.5" />

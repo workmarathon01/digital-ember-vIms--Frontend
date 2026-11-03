@@ -44,6 +44,7 @@ type FormState = {
   position: string;
   date_of_joining: string;
   current_site_id: string;
+  department_id: string;
 };
 
 const EMPTY_FORM: FormState = {
@@ -56,6 +57,7 @@ const EMPTY_FORM: FormState = {
   position: "",
   date_of_joining: "",
   current_site_id: "",
+  department_id: "",
 };
 
 const MIN_PASSWORD_LENGTH = 12;
@@ -69,6 +71,7 @@ export default function EmployeeSelfRegisterPage() {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [options, setOptions] = useState<PublicEmployeeRegistrationOptions>({
     sites: [],
+    departments: [],
     minimum_password_length: MIN_PASSWORD_LENGTH,
   });
   const [optionsLoading, setOptionsLoading] = useState(true);
@@ -96,7 +99,7 @@ export default function EmployeeSelfRegisterPage() {
           setOptionsError(
             err instanceof Error
               ? err.message
-              : "Could not load work locations.",
+              : "Could not load registration options.",
           );
         }
       })
@@ -154,6 +157,9 @@ export default function EmployeeSelfRegisterPage() {
           position: form.position.trim() || undefined,
           date_of_joining: form.date_of_joining || undefined,
           current_site_id: Number(form.current_site_id),
+          department_id: form.department_id
+            ? Number(form.department_id)
+            : undefined,
         },
         profileImage,
       );
@@ -200,10 +206,10 @@ export default function EmployeeSelfRegisterPage() {
               <h1 className="text-2xl font-bold text-navy sm:text-3xl">
                 Create your employee account
               </h1>
-              <p className="mt-2 text-sm text-muted">
+              {/* <p className="mt-2 text-sm text-muted">
                 Share this page with your team. Each registration is reviewed by
                 an administrator or super admin before the account is activated.
-              </p>
+              </p> */}
             </div>
 
             {error ? (
@@ -242,7 +248,7 @@ export default function EmployeeSelfRegisterPage() {
                     id="employee_firstname"
                     required
                     autoComplete="given-name"
-                    placeholder="e.g. Aditi"
+                    placeholder="e.g. Aniket"
                     value={form.firstname}
                     onChange={(event) => update("firstname", event.target.value)}
                   />
@@ -253,7 +259,7 @@ export default function EmployeeSelfRegisterPage() {
                     id="employee_lastname"
                     required
                     autoComplete="family-name"
-                    placeholder="e.g. Rao"
+                    placeholder="e.g. Parkar"
                     value={form.lastname}
                     onChange={(event) => update("lastname", event.target.value)}
                   />
@@ -267,7 +273,7 @@ export default function EmployeeSelfRegisterPage() {
                       type="email"
                       required
                       autoComplete="email"
-                      placeholder="aditi@company.com"
+                      placeholder="aniketparkar@yahoo.com"
                       value={form.email}
                       onChange={(event) => update("email", event.target.value)}
                       className="pl-9"
@@ -291,7 +297,7 @@ export default function EmployeeSelfRegisterPage() {
                       minLength={10}
                       maxLength={15}
                       autoComplete="tel"
-                      placeholder="98765 43210"
+                      placeholder="8446885119"
                       value={form.mobile}
                       onChange={(event) =>
                         update("mobile", digitsOnly(event.target.value))
@@ -305,7 +311,7 @@ export default function EmployeeSelfRegisterPage() {
                   label="Work Location"
                   htmlFor="employee_site"
                   required
-                  hint="The site or campus where you work."
+                  // hint="The site or campus where you work."
                 >
                   <Select
                     id="employee_site"
@@ -331,10 +337,38 @@ export default function EmployeeSelfRegisterPage() {
                   </Select>
                 </Field>
 
+                <Field
+                  label="Department"
+                  htmlFor="employee_department"
+                  hint="Optional. Select the department you work in."
+                >
+                  <Select
+                    id="employee_department"
+                    value={form.department_id}
+                    onChange={(event) =>
+                      update("department_id", event.target.value)
+                    }
+                    disabled={optionsLoading || options.departments.length === 0}
+                  >
+                    <option value="">
+                      {optionsLoading
+                        ? "Loading departments…"
+                        : options.departments.length === 0
+                          ? "No departments available"
+                          : "Select a department"}
+                    </option>
+                    {options.departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+
                 <Field label="Position / Designation" htmlFor="employee_position">
                   <TextInput
                     id="employee_position"
-                    placeholder="e.g. Facility Executive"
+                    placeholder="e.g. Operational"
                     value={form.position}
                     onChange={(event) => update("position", event.target.value)}
                   />
@@ -362,7 +396,7 @@ export default function EmployeeSelfRegisterPage() {
                 <div className="md:col-span-2">
                   <Field
                     label="Profile Photo"
-                    hint="Take a clear photo of your face or upload a JPG, PNG or WebP image."
+                    // hint="Take a clear photo of your face or upload a JPG, PNG or WebP image."
                   >
                     <ProfileImageInput
                       file={profileImage}
@@ -473,7 +507,7 @@ export default function EmployeeSelfRegisterPage() {
             <div className="mt-5 flex items-start gap-2 rounded-lg border border-info/20 bg-info-bg px-4 py-3 text-xs text-info">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
               <p>
-                Your account stays inactive until a Super Admin or Admin
+                Your account stays inactive until Admin
                 approves it. You will be able to sign in with your email and
                 password after approval.
               </p>

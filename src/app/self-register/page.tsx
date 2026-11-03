@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   ClipboardList,
   Download,
+  ExternalLink,
   Loader2,
   MapPin,
   Phone,
@@ -19,6 +20,7 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import { LogoMark } from "@/components/brand-logo";
+import { CopyLinkButton } from "@/components/copy-link-button";
 import { FooterBanner } from "@/components/footer-banner";
 import { ProfileImageInput } from "@/components/profile-image-input";
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
@@ -47,6 +49,8 @@ type FormState = {
   expected_time: string;
   vehicle_number: string;
   site_id: string;
+  building_id: string;
+  floor_id: string;
   unit_id: string;
   vhost_id: string;
 };
@@ -61,6 +65,8 @@ const EMPTY_FORM: FormState = {
   expected_time: "",
   vehicle_number: "",
   site_id: "",
+  building_id: "",
+  floor_id: "",
   unit_id: "",
   vhost_id: "",
 };
@@ -172,6 +178,9 @@ export default function SelfRegisterPage() {
         if (result.visitor) {
           const existing = result.visitor;
           const unitId = existing.unit_id ? String(existing.unit_id) : "";
+          const matchedUnit = options.units.find(
+            (unit) => String(unit.id) === unitId,
+          );
           setForm((current) => ({
             ...current,
             name: existing.name ?? "",
@@ -181,6 +190,10 @@ export default function SelfRegisterPage() {
             visit_type: existing.visit_type ?? "One Time",
             vehicle_number: existing.vehicle_number ?? "",
             site_id: existing.site_id ? String(existing.site_id) : "",
+            building_id: String(
+              existing.building_id ?? matchedUnit?.building_id ?? "",
+            ),
+            floor_id: String(existing.floor_id ?? matchedUnit?.floor_id ?? ""),
             unit_id: unitId,
             vhost_id: existing.vhost_id ? String(existing.vhost_id) : "",
           }));
@@ -208,7 +221,7 @@ export default function SelfRegisterPage() {
         setChecking(false);
       }
     },
-    [loadHosts],
+    [loadHosts, options.units],
   );
 
   // Automatically check the mobile number once 10 digits have been entered.
@@ -223,10 +236,48 @@ export default function SelfRegisterPage() {
     return () => window.clearTimeout(timer);
   }, [phone, stage, runLookup]);
 
-  const unitsForSite = useMemo(() => {
+  const buildingOptions = useMemo(() => {
     if (!form.site_id) return [];
-    return options.units.filter((unit) => String(unit.site_id) === form.site_id);
+    const seen = new Map<number, { id: number; name: string }>();
+    options.units
+      .filter((unit) => String(unit.site_id) === form.site_id)
+      .forEach((unit) => {
+        if (!seen.has(unit.building_id)) {
+          seen.set(unit.building_id, {
+            id: unit.building_id,
+            name: unit.building_name ?? "Building",
+          });
+        }
+      });
+    return Array.from(seen.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }, [options.units, form.site_id]);
+
+  const floorOptions = useMemo(() => {
+    if (!form.building_id) return [];
+    const seen = new Map<number, { id: number; name: string }>();
+    options.units
+      .filter((unit) => String(unit.building_id) === form.building_id)
+      .forEach((unit) => {
+        if (!seen.has(unit.floor_id)) {
+          seen.set(unit.floor_id, {
+            id: unit.floor_id,
+            name: unit.floor_name ?? "Floor",
+          });
+        }
+      });
+    return Array.from(seen.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
+  }, [options.units, form.building_id]);
+
+  const unitsForSelection = useMemo(() => {
+    if (!form.floor_id) return [];
+    return options.units.filter(
+      (unit) => String(unit.floor_id) === form.floor_id,
+    );
+  }, [options.units, form.floor_id]);
 
   const purposeOptions = useMemo(() => {
     return Array.from(
@@ -238,12 +289,47 @@ export default function SelfRegisterPage() {
     setForm((current) => ({ ...current, [key]: value }));
   }
 
+  function selectSite(siteId: string) {
+    setForm((current) => ({
+      ...current,
+      site_id: siteId,
+      building_id: "",
+      floor_id: "",
+      unit_id: "",
+      vhost_id: "",
+    }));
+    void loadHosts("");
+  }
+
+  function selectBuilding(buildingId: string) {
+    setForm((current) => ({
+      ...current,
+      building_id: buildingId,
+      floor_id: "",
+      unit_id: "",
+      vhost_id: "",
+    }));
+    void loadHosts("");
+  }
+
+  function selectFloor(floorId: string) {
+    setForm((current) => ({
+      ...current,
+      floor_id: floorId,
+      unit_id: "",
+      vhost_id: "",
+    }));
+    void loadHosts("");
+  }
+
   function selectUnit(unitId: string) {
     const unit = options.units.find((item) => String(item.id) === unitId);
     setForm((current) => ({
       ...current,
       unit_id: unitId,
       site_id: unit ? String(unit.site_id) : current.site_id,
+      building_id: unit ? String(unit.building_id) : current.building_id,
+      floor_id: unit ? String(unit.floor_id) : current.floor_id,
       vhost_id: "",
     }));
     if (unitId) {
@@ -275,6 +361,8 @@ export default function SelfRegisterPage() {
           expected_time: form.expected_time || undefined,
           vehicle_number: form.vehicle_number || undefined,
           site_id: form.site_id ? Number(form.site_id) : undefined,
+          building_id: form.building_id ? Number(form.building_id) : undefined,
+          floor_id: form.floor_id ? Number(form.floor_id) : undefined,
           unit_id: form.unit_id ? Number(form.unit_id) : undefined,
           vhost_id: form.vhost_id ? Number(form.vhost_id) : undefined,
         },
@@ -297,7 +385,7 @@ export default function SelfRegisterPage() {
     const token = pass.qr_token || pass.pass_code || "";
     if (!token) return "";
     const base = typeof window === "undefined" ? "" : window.location.origin;
-    return base ? `${base}/scan?t=${encodeURIComponent(token)}` : token;
+    return base ? `${base}/scan/?t=${encodeURIComponent(token)}` : token;
   }, [pass]);
 
   useEffect(() => {
@@ -393,7 +481,7 @@ export default function SelfRegisterPage() {
                 label="Mobile Number"
                 htmlFor="contact_no"
                 required
-                hint="Enter 10–15 digits. If we find your previous visit, your details will be filled automatically."
+                // hint="Enter 10–15 digits. If we find your previous visit, your details will be filled automatically."
               >
                 <div className="relative">
                   <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
@@ -543,24 +631,7 @@ export default function SelfRegisterPage() {
                 <Select
                   id="detail_site"
                   value={form.site_id}
-                  onChange={(event) => {
-                    const siteId = event.target.value;
-                    const keepUnit = Boolean(
-                      form.unit_id &&
-                        options.units.some(
-                          (unit) =>
-                            String(unit.id) === form.unit_id &&
-                            String(unit.site_id) === siteId,
-                        ),
-                    );
-                    setForm((current) => ({
-                      ...current,
-                      site_id: siteId,
-                      unit_id: keepUnit ? current.unit_id : "",
-                      vhost_id: keepUnit ? current.vhost_id : "",
-                    }));
-                    if (!keepUnit) void loadHosts("");
-                  }}
+                  onChange={(event) => selectSite(event.target.value)}
                   disabled={optionsLoading}
                 >
                   <option value="">Select a site</option>
@@ -572,24 +643,84 @@ export default function SelfRegisterPage() {
                 </Select>
               </Field>
               <Field
+                label="Building"
+                htmlFor="detail_building"
+                hint="Only buildings at the selected site are listed."
+              >
+                <Select
+                  id="detail_building"
+                  value={form.building_id}
+                  onChange={(event) => selectBuilding(event.target.value)}
+                  disabled={!form.site_id || buildingOptions.length === 0}
+                >
+                  <option value="">
+                    {!form.site_id
+                      ? "Select a site first"
+                      : buildingOptions.length === 0
+                        ? "No buildings at this site"
+                        : "Select a building (optional)"}
+                  </option>
+                  {buildingOptions.map((building) => (
+                    <option key={building.id} value={building.id}>
+                      {building.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field
+                label="Floor"
+                htmlFor="detail_floor"
+                hint="Only floors in the selected building are listed."
+              >
+                <Select
+                  id="detail_floor"
+                  value={form.floor_id}
+                  onChange={(event) => selectFloor(event.target.value)}
+                  disabled={!form.building_id || floorOptions.length === 0}
+                >
+                  <option value="">
+                    {!form.building_id
+                      ? "Select a building first"
+                      : floorOptions.length === 0
+                        ? "No floors in this building"
+                        : "Select a floor (optional)"}
+                  </option>
+                  {floorOptions.map((floor) => (
+                    <option key={floor.id} value={floor.id}>
+                      {floor.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field
                 label="Visiting Unit / Resident"
                 htmlFor="detail_unit"
                 hint={
-                  form.site_id
+                  form.floor_id
                     ? "Optional — helps the host find you."
-                    : "Select a site above to choose a unit."
+                    : "Select a site, building and floor to choose a unit."
                 }
               >
                 <Select
                   id="detail_unit"
                   value={form.unit_id}
                   onChange={(event) => selectUnit(event.target.value)}
-                  disabled={optionsLoading || !form.site_id || unitsForSite.length === 0}
+                  disabled={
+                    optionsLoading ||
+                    !form.floor_id ||
+                    unitsForSelection.length === 0
+                  }
                 >
-                  <option value="">Select a unit (optional)</option>
-                  {unitsForSite.map((unit) => (
+                  <option value="">
+                    {!form.floor_id
+                      ? "Select a floor first"
+                      : unitsForSelection.length === 0
+                        ? "No units on this floor"
+                        : "Select a unit (optional)"}
+                  </option>
+                  {unitsForSelection.map((unit) => (
                     <option key={unit.id} value={unit.id}>
-                      {unit.location_label}
+                      {unit.name}
                     </option>
                   ))}
                 </Select>
@@ -731,7 +862,7 @@ export default function SelfRegisterPage() {
                   {qrImage ? (
                     <a
                       href={qrImage}
-                      download={`visitor-pass-${pass.pass_code ?? pass.id}.png`}
+                      download={`access-pass-${pass.pass_code ?? pass.id}.png`}
                       className="inline-flex items-center gap-1.5 text-xs font-semibold text-accent-strong hover:underline"
                     >
                       <Download className="h-3.5 w-3.5" />
@@ -773,6 +904,29 @@ export default function SelfRegisterPage() {
                 </div>
               </div>
 
+              {pass.pass_url ? (
+                <div className="border-t border-line-soft px-6 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    Your pass link
+                  </p>
+                  <p className="mt-1 break-all text-xs font-medium text-accent-strong">
+                    {pass.pass_url}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <CopyLinkButton value={pass.pass_url} label="Copy pass link" />
+                    <a
+                      href={pass.pass_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink transition hover:bg-canvas-2"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                      Open pass
+                    </a>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="border-t border-line-soft bg-canvas px-6 py-4">
                 <p className="text-xs text-muted">
                   A copy of this pass has been saved as a new visitor record. Keep the QR
@@ -783,7 +937,7 @@ export default function SelfRegisterPage() {
 
             <div className="flex flex-col gap-3 sm:flex-row">
               <Link
-                href={`/scan?t=${encodeURIComponent(pass.qr_token ?? "")}`}
+                href={`/scan/?t=${encodeURIComponent(pass.qr_token ?? "")}`}
                 className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border border-line bg-card px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-canvas-2"
               >
                 <QrCode className="h-4 w-4" />

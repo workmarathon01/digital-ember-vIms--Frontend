@@ -25,23 +25,34 @@ import {
   deleteSite,
   deleteUnit,
   deleteUserSite,
-  fetchBuildings,
-  fetchFloors,
-  fetchSites,
-  fetchUnits,
+  fetchLocationDirectory,
   fetchUserSites,
   fetchUsers,
   makePrimaryUserSite,
 } from "@/lib/api";
+import {
+  buildingsForSite,
+  floorsForBuilding,
+  unitsForFloor,
+} from "@/lib/locations";
 import type { Building, Floor, Site, Unit, User, UserSite } from "@/lib/types";
 
 const emptySite = { name: "", code: "", region: "", city: "", state: "" };
 const emptyBuilding = { site_id: "", name: "", code: "" };
-const emptyFloor = { building_id: "", name: "", level: "" };
-const emptyUnit = { floor_id: "", name: "", unit_type: "", carpet_area: "" };
+const emptyFloor = { site_id: "", building_id: "", name: "", level: "" };
+const emptyUnit = {
+  site_id: "",
+  building_id: "",
+  floor_id: "",
+  name: "",
+  unit_type: "",
+  carpet_area: "",
+};
 const emptyAssignment = {
   user_id: "",
   site_id: "",
+  building_id: "",
+  floor_id: "",
   unit_id: "",
   ownership: "owner",
   is_primary: false,
@@ -125,19 +136,15 @@ export default function PropertiesPage() {
 
   async function load() {
     try {
-      const [siteRes, buildingRes, floorRes, unitRes, assignmentRes, userRes] =
-        await Promise.all([
-          fetchSites(),
-          fetchBuildings(),
-          fetchFloors(),
-          fetchUnits(),
-          fetchUserSites(),
-          fetchUsers(),
-        ]);
-      setSites(siteRes.data);
-      setBuildings(buildingRes.data);
-      setFloors(floorRes.data);
-      setUnits(unitRes.data);
+      const [locationRes, assignmentRes, userRes] = await Promise.all([
+        fetchLocationDirectory(),
+        fetchUserSites(),
+        fetchUsers(),
+      ]);
+      setSites(locationRes.sites);
+      setBuildings(locationRes.buildings);
+      setFloors(locationRes.floors);
+      setUnits(locationRes.units);
       setUserSites(assignmentRes.data);
       setUsers(userRes.data);
     } catch (err) {
@@ -175,6 +182,19 @@ export default function PropertiesPage() {
   }
 
   const totalResidents = userSites.length;
+
+  const floorFormBuildings = buildingsForSite(buildings, floorForm.site_id);
+  const unitFormBuildings = buildingsForSite(buildings, unitForm.site_id);
+  const unitFormFloors = floorsForBuilding(floors, unitForm.building_id);
+  const assignmentBuildings = buildingsForSite(
+    buildings,
+    assignmentForm.site_id,
+  );
+  const assignmentFloors = floorsForBuilding(
+    floors,
+    assignmentForm.building_id,
+  );
+  const assignmentUnits = unitsForFloor(units, assignmentForm.floor_id);
 
   return (
     <div>
@@ -424,16 +444,45 @@ export default function PropertiesPage() {
                 );
               }}
             >
+              <Field label="Site" required>
+                <Select
+                  required
+                  value={floorForm.site_id}
+                  onChange={(e) =>
+                    setFloorForm({
+                      ...floorForm,
+                      site_id: e.target.value,
+                      building_id: "",
+                    })
+                  }
+                >
+                  <option value="">Select a site</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Building" required>
                 <Select
                   required
                   value={floorForm.building_id}
-                  onChange={(e) => setFloorForm({ ...floorForm, building_id: e.target.value })}
+                  onChange={(e) =>
+                    setFloorForm({ ...floorForm, building_id: e.target.value })
+                  }
+                  disabled={!floorForm.site_id || floorFormBuildings.length === 0}
                 >
-                  <option value="">Select a building</option>
-                  {buildings.map((building) => (
+                  <option value="">
+                    {!floorForm.site_id
+                      ? "Select a site first"
+                      : floorFormBuildings.length === 0
+                        ? "No buildings at this site"
+                        : "Select a building"}
+                  </option>
+                  {floorFormBuildings.map((building) => (
                     <option key={building.id} value={building.id}>
-                      {building.site_name} / {building.name}
+                      {building.name}
                     </option>
                   ))}
                 </Select>
@@ -516,16 +565,73 @@ export default function PropertiesPage() {
                 );
               }}
             >
+              <Field label="Site" required>
+                <Select
+                  required
+                  value={unitForm.site_id}
+                  onChange={(e) =>
+                    setUnitForm({
+                      ...unitForm,
+                      site_id: e.target.value,
+                      building_id: "",
+                      floor_id: "",
+                    })
+                  }
+                >
+                  <option value="">Select a site</option>
+                  {sites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {site.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Building" required>
+                <Select
+                  required
+                  value={unitForm.building_id}
+                  onChange={(e) =>
+                    setUnitForm({
+                      ...unitForm,
+                      building_id: e.target.value,
+                      floor_id: "",
+                    })
+                  }
+                  disabled={!unitForm.site_id || unitFormBuildings.length === 0}
+                >
+                  <option value="">
+                    {!unitForm.site_id
+                      ? "Select a site first"
+                      : unitFormBuildings.length === 0
+                        ? "No buildings at this site"
+                        : "Select a building"}
+                  </option>
+                  {unitFormBuildings.map((building) => (
+                    <option key={building.id} value={building.id}>
+                      {building.name}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
               <Field label="Floor" required>
                 <Select
                   required
                   value={unitForm.floor_id}
-                  onChange={(e) => setUnitForm({ ...unitForm, floor_id: e.target.value })}
+                  onChange={(e) =>
+                    setUnitForm({ ...unitForm, floor_id: e.target.value })
+                  }
+                  disabled={!unitForm.building_id || unitFormFloors.length === 0}
                 >
-                  <option value="">Select a floor</option>
-                  {floors.map((floor) => (
+                  <option value="">
+                    {!unitForm.building_id
+                      ? "Select a building first"
+                      : unitFormFloors.length === 0
+                        ? "No floors in this building"
+                        : "Select a floor"}
+                  </option>
+                  {unitFormFloors.map((floor) => (
                     <option key={floor.id} value={floor.id}>
-                      {floor.site_name} / {floor.building_name} / {floor.name}
+                      {floor.name}
                     </option>
                   ))}
                 </Select>
@@ -621,7 +727,13 @@ export default function PropertiesPage() {
                 () =>
                   createUserSite({
                     user_id: Number(assignmentForm.user_id),
-                    site_id: assignmentForm.site_id ? Number(assignmentForm.site_id) : undefined,
+                    site_id: Number(assignmentForm.site_id),
+                    building_id: assignmentForm.building_id
+                      ? Number(assignmentForm.building_id)
+                      : undefined,
+                    floor_id: assignmentForm.floor_id
+                      ? Number(assignmentForm.floor_id)
+                      : undefined,
                     unit_id: assignmentForm.unit_id ? Number(assignmentForm.unit_id) : undefined,
                     ownership: assignmentForm.ownership,
                     is_primary: assignmentForm.is_primary,
@@ -647,28 +759,101 @@ export default function PropertiesPage() {
                 ))}
               </Select>
             </Field>
-            <Field label="Unit" hint="Optional — choose a unit or a site-only association.">
+            <Field label="Site" required>
               <Select
-                value={assignmentForm.unit_id}
-                onChange={(e) => setAssignmentForm({ ...assignmentForm, unit_id: e.target.value })}
+                required
+                value={assignmentForm.site_id}
+                onChange={(e) =>
+                  setAssignmentForm({
+                    ...assignmentForm,
+                    site_id: e.target.value,
+                    building_id: "",
+                    floor_id: "",
+                    unit_id: "",
+                  })
+                }
               >
-                <option value="">No unit</option>
-                {units.map((unit) => (
-                  <option key={unit.id} value={unit.id}>
-                    {unit.location_label}
+                <option value="">Select a site</option>
+                {sites.map((site) => (
+                  <option key={site.id} value={site.id}>
+                    {site.name}
                   </option>
                 ))}
               </Select>
             </Field>
-            <Field label="Site" hint="Derived from the unit when selected.">
+            <Field label="Building" hint="Optional — narrow the location.">
               <Select
-                value={assignmentForm.site_id}
-                onChange={(e) => setAssignmentForm({ ...assignmentForm, site_id: e.target.value })}
+                value={assignmentForm.building_id}
+                onChange={(e) =>
+                  setAssignmentForm({
+                    ...assignmentForm,
+                    building_id: e.target.value,
+                    floor_id: "",
+                    unit_id: "",
+                  })
+                }
+                disabled={!assignmentForm.site_id || assignmentBuildings.length === 0}
               >
-                <option value="">Derived from unit</option>
-                {sites.map((site) => (
-                  <option key={site.id} value={site.id}>
-                    {site.name}
+                <option value="">
+                  {!assignmentForm.site_id
+                    ? "Select a site first"
+                    : assignmentBuildings.length === 0
+                      ? "No buildings at this site"
+                      : "Any building"}
+                </option>
+                {assignmentBuildings.map((building) => (
+                  <option key={building.id} value={building.id}>
+                    {building.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Floor" hint="Optional — narrow the location.">
+              <Select
+                value={assignmentForm.floor_id}
+                onChange={(e) =>
+                  setAssignmentForm({
+                    ...assignmentForm,
+                    floor_id: e.target.value,
+                    unit_id: "",
+                  })
+                }
+                disabled={!assignmentForm.building_id || assignmentFloors.length === 0}
+              >
+                <option value="">
+                  {!assignmentForm.building_id
+                    ? "Select a building first"
+                    : assignmentFloors.length === 0
+                      ? "No floors in this building"
+                      : "Any floor"}
+                </option>
+                {assignmentFloors.map((floor) => (
+                  <option key={floor.id} value={floor.id}>
+                    {floor.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Unit"
+            //  hint="Optional — choose a unit or a site-only association."
+            >
+              <Select
+                value={assignmentForm.unit_id}
+                onChange={(e) =>
+                  setAssignmentForm({ ...assignmentForm, unit_id: e.target.value })
+                }
+                disabled={!assignmentForm.floor_id || assignmentUnits.length === 0}
+              >
+                <option value="">
+                  {!assignmentForm.floor_id
+                    ? "Select a floor first"
+                    : assignmentUnits.length === 0
+                      ? "No units on this floor"
+                      : "No unit"}
+                </option>
+                {assignmentUnits.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.name}
                   </option>
                 ))}
               </Select>

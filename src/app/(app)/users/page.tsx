@@ -29,15 +29,30 @@ import { StatusBadge } from "@/components/status-badge";
 import {
   approveUserRegistration,
   createUser,
+  fetchDepartments,
+  fetchLocationDirectory,
   fetchPendingRegistrations,
   fetchRoles,
-  fetchSites,
-  fetchUnits,
   fetchUsers,
   rejectUserRegistration,
   updateUser,
 } from "@/lib/api";
-import type { PaginationMeta, Role, Site, Unit, User } from "@/lib/types";
+import {
+  buildingsForSite,
+  findUnit,
+  floorsForBuilding,
+  unitsForFloor,
+} from "@/lib/locations";
+import type {
+  Building,
+  Department,
+  Floor,
+  PaginationMeta,
+  Role,
+  Site,
+  Unit,
+  User,
+} from "@/lib/types";
 
 const initialForm = {
   email: "",
@@ -47,7 +62,10 @@ const initialForm = {
   password: "",
   user_type: "",
   role_id: "",
+  department_id: "",
   current_site_id: "",
+  building_id: "",
+  floor_id: "",
   unit_id: "",
 };
 
@@ -66,7 +84,10 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
+  const [buildings, setBuildings] = useState<Building[]>([]);
+  const [floors, setFloors] = useState<Floor[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const [meta, setMeta] = useState<PaginationMeta | null>(null);
   const [page, setPage] = useState(1);
   const [editingUserId, setEditingUserId] = useState<number | null>(null);
@@ -109,14 +130,20 @@ export default function UsersPage() {
     if (!canCreateUsers && !canUpdateUsers) return;
 
     try {
-      const [roleRes, siteRes, unitRes] = await Promise.all([
+      const departmentRequest = can(user, "departments", "read")
+        ? fetchDepartments()
+        : Promise.resolve({ data: [] as Department[] });
+      const [roleRes, locationRes, departmentRes] = await Promise.all([
         fetchRoles(),
-        fetchSites(),
-        fetchUnits(),
+        fetchLocationDirectory(),
+        departmentRequest,
       ]);
       setRoles(roleRes.data);
-      setSites(siteRes.data);
-      setUnits(unitRes.data);
+      setSites(locationRes.sites);
+      setBuildings(locationRes.buildings);
+      setFloors(locationRes.floors);
+      setUnits(locationRes.units);
+      setDepartments(departmentRes.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load form options.");
     }
@@ -211,6 +238,7 @@ export default function UsersPage() {
   }
 
   function startEdit(selected: User) {
+    const selectedUnit = findUnit(units, selected.unit_id);
     setEditingUserId(selected.id);
     setForm({
       email: selected.email ?? "",
@@ -220,7 +248,12 @@ export default function UsersPage() {
       password: "",
       user_type: selected.user_type ?? "",
       role_id: selected.role_id ? String(selected.role_id) : "",
-      current_site_id: selected.current_site_id ? String(selected.current_site_id) : "",
+      department_id: selected.department_id ? String(selected.department_id) : "",
+      current_site_id: String(
+        selected.current_site_id ?? selectedUnit?.site_id ?? "",
+      ),
+      building_id: String(selected.building_id ?? selectedUnit?.building_id ?? ""),
+      floor_id: String(selected.floor_id ?? selectedUnit?.floor_id ?? ""),
       unit_id: selected.unit_id ? String(selected.unit_id) : "",
     });
     setProfileImage(null);
@@ -228,6 +261,44 @@ export default function UsersPage() {
     setError(null);
     setNotice(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function changeSite(siteId: string) {
+    setForm((current) => ({
+      ...current,
+      current_site_id: siteId,
+      building_id: "",
+      floor_id: "",
+      unit_id: "",
+    }));
+  }
+
+  function changeBuilding(buildingId: string) {
+    setForm((current) => ({
+      ...current,
+      building_id: buildingId,
+      floor_id: "",
+      unit_id: "",
+    }));
+  }
+
+  function changeFloor(floorId: string) {
+    setForm((current) => ({
+      ...current,
+      floor_id: floorId,
+      unit_id: "",
+    }));
+  }
+
+  function changeUnit(unitId: string) {
+    const unit = findUnit(units, unitId);
+    setForm((current) => ({
+      ...current,
+      unit_id: unitId,
+      current_site_id: unit ? String(unit.site_id) : current.current_site_id,
+      building_id: unit ? String(unit.building_id) : current.building_id,
+      floor_id: unit ? String(unit.floor_id) : current.floor_id,
+    }));
   }
 
   async function toggleActive(target: User) {
@@ -261,7 +332,10 @@ export default function UsersPage() {
         ...form,
         active: editingUserId ? undefined : true,
         role_id: form.role_id ? Number(form.role_id) : undefined,
+        department_id: form.department_id ? Number(form.department_id) : undefined,
         current_site_id: form.current_site_id ? Number(form.current_site_id) : undefined,
+        building_id: form.building_id ? Number(form.building_id) : undefined,
+        floor_id: form.floor_id ? Number(form.floor_id) : undefined,
         unit_id: form.unit_id ? Number(form.unit_id) : undefined,
       };
 
@@ -283,6 +357,10 @@ export default function UsersPage() {
       setSubmitting(false);
     }
   }
+
+  const availableBuildings = buildingsForSite(buildings, form.current_site_id);
+  const availableFloors = floorsForBuilding(floors, form.building_id);
+  const availableUnits = unitsForFloor(units, form.floor_id);
 
   return (
     <div>
@@ -317,14 +395,14 @@ export default function UsersPage() {
                 <UserPlus className="h-4 w-4 text-accent" />
                 Employee Self-Registration
               </h2>
-              <p className="mt-1.5 text-[13px] text-muted">
+              {/* <p className="mt-1.5 text-[13px] text-muted">
                 Share this public link with employees. They can create their own
                 account, and a Super Admin or Admin must approve it before they
                 can sign in.
               </p>
               <code className="mt-3 inline-block rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-medium text-ink">
                 /self-register/employee/
-              </code>
+              </code> */}
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -492,7 +570,7 @@ export default function UsersPage() {
           <Field label="First Name" required>
             <TextInput
               required
-              placeholder="e.g. Aditi"
+              placeholder="e.g. Aniket"
               value={form.firstname}
               onChange={(e) => update("firstname", e.target.value)}
             />
@@ -500,7 +578,7 @@ export default function UsersPage() {
           <Field label="Last Name" required>
             <TextInput
               required
-              placeholder="e.g. Rao"
+              placeholder="e.g. Parkar"
               value={form.lastname}
               onChange={(e) => update("lastname", e.target.value)}
             />
@@ -509,14 +587,14 @@ export default function UsersPage() {
             <TextInput
               type="email"
               required
-              placeholder="aditi@company.com"
+              placeholder="aniketparkar@yahoo.com"
               value={form.email}
               onChange={(e) => update("email", e.target.value)}
             />
           </Field>
           <Field label="Mobile Number">
             <TextInput
-              placeholder="e.g. 98765 43210"
+              placeholder="e.g. 9876543210"
               value={form.mobile}
               onChange={(e) => update("mobile", e.target.value)}
             />
@@ -589,12 +667,30 @@ export default function UsersPage() {
                 ))}
             </Select>
           </Field>
+          <Field label="Department" 
+          // hint="Managed from Setup → Departments."
+          >
+            <Select
+              value={form.department_id}
+              onChange={(e) => update("department_id", e.target.value)}
+            >
+              <option value="">
+                {departments.length === 0 ? "No departments available" : "Select Department"}
+              </option>
+              {departments.map((department) => (
+                <option key={department.id} value={department.id}>
+                  {department.name}
+                  {department.active ? "" : " (inactive)"}
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Primary site">
             <Select
               value={form.current_site_id}
-              onChange={(e) => update("current_site_id", e.target.value)}
+              onChange={(e) => changeSite(e.target.value)}
             >
-              <option value="">No site</option>
+              <option value="">Select Site</option>
               {sites.map((site) => (
                 <option key={site.id} value={site.id}>
                   {site.name}
@@ -602,12 +698,69 @@ export default function UsersPage() {
               ))}
             </Select>
           </Field>
-          <Field label="Primary unit" hint="Selecting a unit fills its site, building and floor.">
-            <Select value={form.unit_id} onChange={(e) => update("unit_id", e.target.value)}>
-              <option value="">No unit / site-only</option>
-              {units.map((unit) => (
+          <Field label="Building" 
+          // hint="Only buildings at the selected site are listed."
+          
+          >
+            <Select
+              value={form.building_id}
+              onChange={(e) => changeBuilding(e.target.value)}
+              disabled={!form.current_site_id || availableBuildings.length === 0}
+            >
+              <option value="">
+                {!form.current_site_id
+                  ? "Select a site first"
+                  : availableBuildings.length === 0
+                    ? "No buildings at this site"
+                    : "No building / site-only"}
+              </option>
+              {availableBuildings.map((building) => (
+                <option key={building.id} value={building.id}>
+                  {building.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Floor" 
+          // hint="Only floors in the selected building are listed."
+          >
+            <Select
+              value={form.floor_id}
+              onChange={(e) => changeFloor(e.target.value)}
+              disabled={!form.building_id || availableFloors.length === 0}
+            >
+              <option value="">
+                {!form.building_id
+                  ? "Select a building first"
+                  : availableFloors.length === 0
+                    ? "No floors in this building"
+                    : "No floor / building-only"}
+              </option>
+              {availableFloors.map((floor) => (
+                <option key={floor.id} value={floor.id}>
+                  {floor.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Primary unit" 
+          // hint="Only units on the selected floor are listed."
+          >
+            <Select
+              value={form.unit_id}
+              onChange={(e) => changeUnit(e.target.value)}
+              disabled={!form.floor_id || availableUnits.length === 0}
+            >
+              <option value="">
+                {!form.floor_id
+                  ? "Select a floor first"
+                  : availableUnits.length === 0
+                    ? "No units on this floor"
+                    : "No unit / floor-only"}
+              </option>
+              {availableUnits.map((unit) => (
                 <option key={unit.id} value={unit.id}>
-                  {unit.location_label}
+                  {unit.name}
                 </option>
               ))}
             </Select>
