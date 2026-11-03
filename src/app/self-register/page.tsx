@@ -347,6 +347,12 @@ export default function SelfRegisterPage() {
   async function handleDetailsSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);
+
+    if (!form.expected_date || !form.expected_time) {
+      setError("Expected date and time are required.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -577,7 +583,7 @@ export default function SelfRegisterPage() {
                   id="detail_name"
                   required
                   autoComplete="name"
-                  placeholder="e.g. Rohan Mehta"
+                  placeholder="e.g. Aniket Parkar"
                   value={form.name}
                   onChange={(event) => update("name", event.target.value)}
                 />
@@ -780,18 +786,20 @@ export default function SelfRegisterPage() {
                   onChange={(event) => update("vehicle_number", event.target.value)}
                 />
               </Field>
-              <Field label="Expected Date" htmlFor="detail_date">
+              <Field label="Expected Date" htmlFor="detail_date" required>
                 <TextInput
                   id="detail_date"
                   type="date"
+                  required
                   value={form.expected_date}
                   onChange={(event) => update("expected_date", event.target.value)}
                 />
               </Field>
-              <Field label="Expected Time" htmlFor="detail_time">
+              <Field label="Expected Time" htmlFor="detail_time" required>
                 <TextInput
                   id="detail_time"
                   type="time"
+                  required
                   value={form.expected_time}
                   onChange={(event) => update("expected_time", event.target.value)}
                 />

@@ -162,6 +162,12 @@ export function Sidebar() {
             <p className="truncate text-xs text-slate-muted">
               {user?.email ?? "not signed in"}
             </p>
+            {user?.site_name ? (
+              <p className="mt-1 inline-flex max-w-full items-center gap-1.5 truncate rounded bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/80">
+                <Building2 className="h-3 w-3 shrink-0" strokeWidth={1.8} />
+                <span className="truncate">{user.site_name}</span>
+              </p>
+            ) : null}
           </div>
         </div>
         <button

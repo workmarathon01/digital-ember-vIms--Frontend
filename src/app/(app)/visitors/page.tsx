@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -8,7 +8,6 @@ import {
   Car,
   ClipboardList,
   Download,
-  ExternalLink,
   Loader2,
   MapPin,
   Phone,
@@ -17,7 +16,6 @@ import {
   User as UserIcon,
   X,
 } from "lucide-react";
-import { CopyLinkButton } from "@/components/copy-link-button";
 import { Button, Card, Field, Select, TextInput } from "@/components/ui";
 import { ProfileImageInput } from "@/components/profile-image-input";
 import { StatusBadge } from "@/components/status-badge";
@@ -37,6 +35,7 @@ import type {
   PublicHost,
   Site,
   Unit,
+  User as AuthUser,
   Visitor,
 } from "@/lib/types";
 
@@ -59,6 +58,27 @@ const initialForm = {
 
 type FormState = typeof initialForm;
 
+function isEmployee(user: AuthUser | null): boolean {
+  return Boolean(
+    user && (user.user_type === "employee" || user.role_key === "staff"),
+  );
+}
+
+// Employees create visitors for their own workplace, so start from the
+// location and host stored on their profile.
+function initialFormFor(user: AuthUser | null): FormState {
+  if (!isEmployee(user) || !user) return initialForm;
+
+  return {
+    ...initialForm,
+    site_id: user.current_site_id ? String(user.current_site_id) : "",
+    building_id: user.building_id ? String(user.building_id) : "",
+    floor_id: user.floor_id ? String(user.floor_id) : "",
+    unit_id: user.unit_id ? String(user.unit_id) : "",
+    vhost_id: String(user.id),
+  };
+}
+
 function formatExpectedTime(raw: string | null): string {
   if (!raw) return "";
   return new Date(raw).toLocaleTimeString([], {
@@ -70,7 +90,7 @@ function formatExpectedTime(raw: string | null): string {
 export default function VisitorsPage() {
   const { user } = useAuth();
   const canCreateVisitor = can(user, "visitors", "create");
-  const [form, setForm] = useState<FormState>(initialForm);
+  const [form, setForm] = useState<FormState>(() => initialFormFor(user));
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -152,7 +172,7 @@ export default function VisitorsPage() {
     }
   }
 
-  async function loadHosts(unitId: string) {
+  const loadHosts = useCallback(async (unitId: string) => {
     const requestId = ++hostsRequest.current;
 
     if (!unitId) {
@@ -170,7 +190,7 @@ export default function VisitorsPage() {
     } finally {
       if (requestId === hostsRequest.current) setHostsLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,7 +205,10 @@ export default function VisitorsPage() {
 
     void fetchLocationDirectory()
       .then((data) => {
-        if (!cancelled) setOptions(data);
+        if (cancelled) return;
+        setOptions(data);
+        const defaults = initialFormFor(user);
+        if (defaults.unit_id) void loadHosts(defaults.unit_id);
       })
       .catch(() => {
         if (!cancelled)
@@ -198,11 +221,19 @@ export default function VisitorsPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [user, loadHosts]);
+
+  // Preselect the site the user is attached to so site-scoped accounts do not
+  // have to pick their only site for every new visitor. This is derived during
+  // render instead of copied into state, so resetting the form falls back to it.
+  const preferredSite =
+    options.sites.find((site) => site.id === user?.current_site_id) ??
+    (options.sites.length === 1 ? options.sites[0] : null);
+  const selectedSiteId = form.site_id || (preferredSite ? String(preferredSite.id) : "");
 
   const buildingsForSelectedSite = buildingsForSite(
     options.buildings,
-    form.site_id,
+    selectedSiteId,
   );
   const floorsForSelectedBuilding = floorsForBuilding(
     options.floors,
@@ -269,12 +300,19 @@ export default function VisitorsPage() {
     e.preventDefault();
     setError(null);
     setNotice(null);
+
+    if (!form.expected_date || !form.expected_time) {
+      setError("Expected date and time are required.");
+      return;
+    }
+
     setSubmitting(true);
     try {
       const visitor = await createVisitor(
         {
           ...form,
-          site_id: form.site_id ? Number(form.site_id) : undefined,
+          created_by_id: user?.id,
+          site_id: selectedSiteId ? Number(selectedSiteId) : undefined,
           building_id: form.building_id ? Number(form.building_id) : undefined,
           floor_id: form.floor_id ? Number(form.floor_id) : undefined,
           unit_id: form.unit_id ? Number(form.unit_id) : undefined,
@@ -285,10 +323,11 @@ export default function VisitorsPage() {
       setNotice(
         `Visitor pass ${visitor.pass_code ?? "issued"} successfully. The QR pass is ready to share.`,
       );
-      setForm(initialForm);
+      const defaults = initialFormFor(user);
+      setForm(defaults);
       setProfileImage(null);
       setProfilePreview(null);
-      void loadHosts("");
+      void loadHosts(defaults.unit_id);
       openQr(visitor);
       await load();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -333,7 +372,7 @@ export default function VisitorsPage() {
           <Field label="Full Name" required>
             <TextInput
               required
-              placeholder="e.g. Rohan Mehta"
+              placeholder="e.g. Aniket Parkar"
               value={form.name}
               onChange={(e) => update("name", e.target.value)}
             />
@@ -388,7 +427,7 @@ export default function VisitorsPage() {
           </Field>
           <Field label="Site">
             <Select
-              value={form.site_id}
+              value={selectedSiteId}
               onChange={(e) => selectSite(e.target.value)}
               disabled={optionsLoading}
             >
@@ -406,12 +445,12 @@ export default function VisitorsPage() {
               onChange={(e) => selectBuilding(e.target.value)}
               disabled={
                 optionsLoading ||
-                !form.site_id ||
+                !selectedSiteId ||
                 buildingsForSelectedSite.length === 0
               }
             >
               <option value="">
-                {!form.site_id
+                {!selectedSiteId
                   ? "Select a site first"
                   : buildingsForSelectedSite.length === 0
                     ? "No buildings at this site"
@@ -532,16 +571,18 @@ export default function VisitorsPage() {
               <option value="180">3+ hours</option>
             </Select>
           </Field>
-          <Field label="Expected Date">
+          <Field label="Expected Date" required>
             <TextInput
               type="date"
+              required
               value={form.expected_date}
               onChange={(e) => update("expected_date", e.target.value)}
             />
           </Field>
-          <Field label="Expected Time">
+          <Field label="Expected Time" required>
             <TextInput
               type="time"
+              required
               value={form.expected_time}
               onChange={(e) => update("expected_time", e.target.value)}
             />
@@ -625,6 +666,11 @@ export default function VisitorsPage() {
                           </p>
                           {v.host_name ? (
                             <p className="text-xs text-muted">Host: {v.host_name}</p>
+                          ) : null}
+                          {v.created_by_name ? (
+                            <p className="text-xs text-muted">
+                              Created by: {v.created_by_name}
+                            </p>
                           ) : null}
                         </div>
                       </div>
@@ -765,7 +811,7 @@ export default function VisitorsPage() {
               ) : null}
             </div>
 
-            {qrVisitor.pass_url ? (
+            {/* {qrVisitor.pass_url ? (
               <div className="mt-4 rounded-lg border border-line bg-canvas px-3 py-2.5">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
                   Visitor pass link
@@ -790,7 +836,7 @@ export default function VisitorsPage() {
                   </a>
                 </div>
               </div>
-            ) : null}
+            ) : null} */}
 
             <div className="mt-5 flex gap-2">
               {qrImage ? (

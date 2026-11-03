@@ -67,6 +67,8 @@ export interface Site {
 
 export interface Department {
   id: number;
+  site_id?: number | null;
+  site_name?: string | null;
   name: string;
   code: string;
   description: string | null;
@@ -262,6 +264,7 @@ export interface Visitor {
   building_name?: string | null;
   floor_name?: string | null;
   unit_name?: string | null;
+  created_by_id: number | null;
   created_by_name: string | null;
   created_at: string;
   updated_at: string;

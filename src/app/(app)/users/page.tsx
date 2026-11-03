@@ -632,14 +632,25 @@ export default function UsersPage() {
               />
             </Field>
           </div>
-          <Field label="User Type">
+          <Field
+            label="User Type"
+            hint="The role is assigned automatically from the selected user type."
+          >
             <Select
               value={form.user_type}
-              onChange={(e) => update("user_type", e.target.value)}
+              onChange={(e) => {
+                const userType = e.target.value;
+                const matched = roles.find((role) => role.key === userType);
+                setForm((current) => ({
+                  ...current,
+                  user_type: userType,
+                  role_id: matched ? String(matched.id) : "",
+                }));
+              }}
             >
               <option value="">Select user type</option>
               {form.user_type &&
-              !roles.some((role) => role.name === form.user_type) ? (
+              !roles.some((role) => role.key === form.user_type) ? (
                 <option value={form.user_type}>{form.user_type}</option>
               ) : null}
               {roles
@@ -647,14 +658,20 @@ export default function UsersPage() {
                   (role) => user?.role_key === "super_admin" || role.key !== "super_admin",
                 )
                 .map((role) => (
-                  <option key={role.id} value={role.name}>
+                  <option key={role.id} value={role.key}>
                     {role.name}
                   </option>
                 ))}
             </Select>
           </Field>
-          <Field label="Role">
-            <Select value={form.role_id} onChange={(e) => update("role_id", e.target.value)}>
+          <Field
+            label="Role"
+            hint="Set automatically from the user type."
+          >
+            <Select
+              value={form.role_id}
+              disabled={roles.some((role) => role.key === form.user_type)}
+            >
               <option value="">Select role</option>
               {roles
                 .filter(

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowLeft,
   BadgeCheck,
   CalendarDays,
   Car,
@@ -11,18 +10,15 @@ import {
   ClipboardList,
   Clock3,
   Download,
-  ExternalLink,
   Loader2,
   MapPin,
   Phone,
   QrCode,
-  RefreshCw,
   ShieldCheck,
   TriangleAlert,
   User as UserIcon,
 } from "lucide-react";
 import { LogoMark } from "@/components/brand-logo";
-import { CopyLinkButton } from "@/components/copy-link-button";
 import { FooterBanner } from "@/components/footer-banner";
 import { Card } from "@/components/ui";
 import { fetchVisitorPass } from "@/lib/public-api";
@@ -55,21 +51,18 @@ export default function VisitorPassPage() {
   const [state, setState] = useState<PageState>("loading");
   const [visitor, setVisitor] = useState<PublicVisitor | null>(null);
   const [token, setToken] = useState("");
-  const [shareUrl, setShareUrl] = useState("");
   const [qrImage, setQrImage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const passToken = params.get("t") || params.get("token") || "";
-    const currentUrl = window.location.href;
     let cancelled = false;
 
     // Read the token from the URL inside a timer so the initial render is not
     // tied to browser globals and React can batch the first state update.
     const timer = window.setTimeout(() => {
       setToken(passToken);
-      setShareUrl(currentUrl);
 
       if (!passToken) {
         setError(
@@ -83,7 +76,6 @@ export default function VisitorPassPage() {
         .then((response) => {
           if (cancelled) return;
           setVisitor(response.visitor);
-          setShareUrl(response.visitor.pass_url || currentUrl);
           setState("ready");
         })
         .catch((err) => {

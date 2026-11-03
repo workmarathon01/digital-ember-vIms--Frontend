@@ -275,16 +275,20 @@ export async function createVisitor(
   params: Record<string, unknown>,
   profileImage?: File | null,
 ): Promise<Visitor> {
+  // `expected_duration` is a form-only hint; it is not a persisted column.
+  const payload = { ...params };
+  delete payload.expected_duration;
+
   if (profileImage) {
     return request<Visitor>("/visitors.json", {
       method: "POST",
-      formData: buildVisitorFormData(params, profileImage),
+      formData: buildVisitorFormData(payload, profileImage),
     });
   }
 
   return request<Visitor>("/visitors.json", {
     method: "POST",
-    body: { visitor: params },
+    body: { visitor: payload },
   });
 }
 
