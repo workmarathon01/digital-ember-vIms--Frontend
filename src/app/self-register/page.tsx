@@ -90,6 +90,7 @@ function formatDateTime(value: string | null | undefined): string {
   return new Date(value).toLocaleString([], {
     dateStyle: "medium",
     timeStyle: "short",
+    timeZone: "Asia/Kolkata",
   });
 }
 

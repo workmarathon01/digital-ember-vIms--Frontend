@@ -65,6 +65,35 @@ export interface Site {
   updated_at: string;
 }
 
+export interface BannerAttachment {
+  id: number;
+  filename: string;
+  content_type: string;
+  byte_size: number;
+  image: boolean;
+  url: string;
+}
+
+export interface Banner {
+  id: number;
+  site_id: number;
+  site_name: string | null;
+  title: string;
+  description: string | null;
+  external_urls: string[];
+  attachments: BannerAttachment[];
+  active: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+  url: string;
+}
+
+export interface BannerListResponse {
+  data: Banner[];
+  meta: PaginationMeta;
+}
+
 export interface Department {
   id: number;
   site_id?: number | null;
@@ -328,6 +357,7 @@ export interface DashboardMetrics {
   pending_staffs_count: number;
   attendance_open: number;
   recent_activity: AuditLog[];
+  banners: Banner[];
 }
 
 export interface PaginationMeta {

@@ -75,7 +75,7 @@ function formatDate(value?: string | null): string {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
-  return date.toLocaleDateString([], { dateStyle: "medium" });
+  return date.toLocaleDateString([], { dateStyle: "medium", timeZone: "Asia/Kolkata" });
 }
 
 export default function UsersPage() {

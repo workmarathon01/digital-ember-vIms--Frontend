@@ -1,5 +1,7 @@
 import type {
   ApiErrorBody,
+  Banner,
+  BannerListResponse,
   Building,
   BuildingListResponse,
   DashboardMetrics,
@@ -434,6 +436,81 @@ export async function updateSite(
 
 export async function deleteSite(id: number): Promise<void> {
   await request(`/sites/${id}.json`, { method: "DELETE" });
+}
+
+export async function fetchBanners(
+  siteId?: number,
+): Promise<BannerListResponse> {
+  const query = siteId ? `?site_id=${siteId}` : "";
+  return request<BannerListResponse>(`/banners.json${query}`);
+}
+
+function bannerFormData(
+  params: Record<string, unknown>,
+  files: File[],
+  removeAttachmentIds: number[],
+): FormData {
+  const formData = new FormData();
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === undefined) continue;
+
+    if (key === "external_urls") {
+      const urls = value as string[];
+      if (urls.length === 0) {
+        // An explicit empty field tells the server to clear existing URLs.
+        formData.append("banner[external_urls][]", "");
+      } else {
+        for (const url of urls) {
+          formData.append("banner[external_urls][]", url);
+        }
+      }
+    } else {
+      // Nullable text fields (description) must be sent as an empty string
+      // so clearing them in the form clears the stored value.
+      formData.append(`banner[${key}]`, value === null ? "" : String(value));
+    }
+  }
+
+  for (const file of files) {
+    formData.append("banner[attachments][]", file);
+  }
+
+  for (const id of removeAttachmentIds) {
+    formData.append("banner[remove_attachment_ids][]", String(id));
+  }
+
+  return formData;
+}
+
+export async function createBanner(
+  params: Record<string, unknown>,
+  files: File[] = [],
+): Promise<Banner> {
+  return request<Banner>("/banners.json", {
+    method: "POST",
+    ...(files.length > 0
+      ? { formData: bannerFormData(params, files, []) }
+      : { body: { banner: params } }),
+  });
+}
+
+export async function updateBanner(
+  id: number,
+  params: Record<string, unknown>,
+  files: File[] = [],
+  removeAttachmentIds: number[] = [],
+): Promise<Banner> {
+  return request<Banner>(`/banners/${id}.json`, {
+    method: "PATCH",
+    ...(files.length > 0 || removeAttachmentIds.length > 0
+      ? { formData: bannerFormData(params, files, removeAttachmentIds) }
+      : { body: { banner: params } }),
+  });
+}
+
+export async function deleteBanner(id: number): Promise<void> {
+  await request(`/banners/${id}.json`, { method: "DELETE" });
 }
 
 export async function fetchBuildings(): Promise<BuildingListResponse> {

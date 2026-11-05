@@ -8,8 +8,10 @@ import {
   ClipboardList,
   Clock3,
   DoorOpen,
+  ExternalLink,
   LogIn,
   MapPin,
+  Megaphone,
   RefreshCw,
   UserCheck,
   Users,
@@ -36,12 +38,15 @@ function visitorStatus(v: Visitor): { label: VisitorStatus; tone: "success" | "i
 
 function formatExpected(v: Visitor): string {
   const date = v.expected_date
-    ? new Date(`${v.expected_date}T00:00:00`).toLocaleDateString()
+    ? new Date(`${v.expected_date}T00:00:00+05:30`).toLocaleDateString([], {
+        timeZone: "Asia/Kolkata",
+      })
     : "—";
   if (!v.expected_time) return date;
   const time = new Date(v.expected_time).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Kolkata",
   });
   return `${date} ${time}`;
 }
@@ -67,6 +72,8 @@ export default function DashboardPage() {
   useEffect(() => {
     void load();
   }, []);
+
+  const banners = metrics?.banners ?? [];
 
   const metricCards: Metric[] = metrics
     ? [
@@ -149,6 +156,85 @@ export default function DashboardPage() {
               </Card>
             ))}
           </section>
+
+          {banners.length > 0 ? (
+            <section className="mt-6">
+              <div className="mb-3 flex items-center gap-2">
+                <Megaphone className="h-4 w-4 text-accent" strokeWidth={1.8} />
+                <h2 className="text-sm font-bold uppercase tracking-[0.08em] text-ink">
+                  Site Banners
+                </h2>
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                {banners.map((banner) => (
+                  <Card key={banner.id} className="p-5">
+                    <h3 className="text-base font-bold text-ink">{banner.title}</h3>
+                    {banner.description ? (
+                      <p className="mt-1 text-sm leading-6 text-muted">
+                        {banner.description}
+                      </p>
+                    ) : null}
+                    {banner.attachments.some((attachment) => attachment.image) ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {banner.attachments
+                          .filter((attachment) => attachment.image)
+                          .map((attachment) => (
+                            <a
+                              key={attachment.id}
+                              href={attachment.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={attachment.filename}
+                              className="overflow-hidden rounded-md border border-line transition hover:border-accent/40"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={attachment.url}
+                                alt={attachment.filename}
+                                className="h-20 w-32 object-cover"
+                              />
+                            </a>
+                          ))}
+                      </div>
+                    ) : null}
+
+                    {(banner.attachments.some((attachment) => !attachment.image) ||
+                      banner.external_urls.length > 0) ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {banner.attachments
+                          .filter((attachment) => !attachment.image)
+                          .map((attachment) => (
+                            <a
+                              key={attachment.id}
+                              href={attachment.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:border-accent/40 hover:bg-canvas-2"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              {attachment.filename}
+                            </a>
+                          ))}
+                        {banner.external_urls.map((url) => (
+                          <a
+                            key={`${banner.id}-${url}`}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={url}
+                            className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-line bg-canvas px-3 py-1.5 text-xs font-semibold text-accent-strong transition hover:border-accent/40 hover:bg-canvas-2"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0" />
+                            <span className="break-all">{url}</span>
+                          </a>
+                        ))}
+                      </div>
+                    ) : null}
+                  </Card>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="mt-6 grid gap-4 lg:grid-cols-3">
             <Card className={canUseKiosk ? "lg:col-span-2" : "lg:col-span-3"}>

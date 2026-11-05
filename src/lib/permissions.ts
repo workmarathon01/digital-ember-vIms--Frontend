@@ -44,6 +44,7 @@ export const routePermissions: Record<string, Permission> = {
   "/features": { resource: "features", action: "update" },
   "/setup": { resource: "departments", action: "read" },
   "/setup/departments": { resource: "departments", action: "read" },
+  "/setup/banners": { resource: "banners", action: "read" },
 };
 
 export const routeFeatures: Record<string, string> = {

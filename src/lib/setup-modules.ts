@@ -1,4 +1,4 @@
-import { Building2, type LucideIcon } from "lucide-react";
+import { Building2, Megaphone, type LucideIcon } from "lucide-react";
 import type { Permission } from "./permissions";
 
 export type SetupModule = {
@@ -21,5 +21,13 @@ export const setupModules: SetupModule[] = [
       "Create the departments used across users, approvals and reporting.",
     icon: Building2,
     permission: { resource: "departments", action: "read" },
+  },
+  {
+    href: "/setup/banners",
+    label: "Banners",
+    description:
+      "Publish site-specific banners with descriptions and attachment links.",
+    icon: Megaphone,
+    permission: { resource: "banners", action: "read" },
   },
 ];

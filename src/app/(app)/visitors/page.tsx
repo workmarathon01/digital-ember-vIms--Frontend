@@ -84,6 +84,7 @@ function formatExpectedTime(raw: string | null): string {
   return new Date(raw).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Kolkata",
   });
 }
 
@@ -791,6 +792,7 @@ export default function VisitorsPage() {
                   ? new Date(qrVisitor.start_pass).toLocaleString([], {
                       dateStyle: "medium",
                       timeStyle: "short",
+                      timeZone: "Asia/Kolkata",
                     })
                   : "—"}
               </p>
@@ -800,6 +802,7 @@ export default function VisitorsPage() {
                   ? new Date(qrVisitor.end_pass).toLocaleString([], {
                       dateStyle: "medium",
                       timeStyle: "short",
+                      timeZone: "Asia/Kolkata",
                     })
                   : "—"}
               </p>
